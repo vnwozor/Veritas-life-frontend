@@ -132,6 +132,9 @@ module.exports = async function handler(req, res) {
   p = String(Array.isArray(p) ? p.join('/') : p).replace(/^\/+|\/+$/g, '');
   const q = k => (req.query && req.query[k] != null ? req.query[k] : url.searchParams.get(k));
   const ip = String(req.headers['x-forwarded-for'] || (req.socket && req.socket.remoteAddress) || '').split(',')[0].trim();
+  // CORS: lets the separate admin website (another Vercel project) talk to this server. Logins use tokens, not cookies.
+  const org = req.headers.origin; const ALLOWED = String(process.env.ALLOWED_ORIGINS || '*').split(',').map(x => x.trim()).filter(Boolean);
+  if (org && (ALLOWED.includes('*') || ALLOWED.includes(org))) { res.setHeader('Access-Control-Allow-Origin', org); res.setHeader('Vary', 'Origin'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); res.setHeader('Access-Control-Max-Age', '86400'); }
   try {
     if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
     const b = req.method === 'POST' ? await body(req) : {};
