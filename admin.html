@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Veritas Life Admin</title>
+<script src="/config.js"></script>
+<style>
+:root{--bg:#081410;--panel:#0f231e;--panel2:#173129;--line:rgba(239,230,207,.12);--ink:#efe6cf;--muted:#9aa897;--gold:#e3b04b;--bad:#e5654f;--good:#5cbf7f;--info:#66acd9;
+  --ui:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;color-scheme:dark}
+:root[data-theme="light"]{--bg:#f3efe4;--panel:#fffdf7;--panel2:#f1ebdc;--line:rgba(30,40,30,.14);--ink:#1d2a24;--muted:#5f6c63;--gold:#a8741a;--bad:#c2412e;--good:#2f8a55;--info:#2e6f9e;color-scheme:light}
+@media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--bg:#f3efe4;--panel:#fffdf7;--panel2:#f1ebdc;--line:rgba(30,40,30,.14);--ink:#1d2a24;--muted:#5f6c63;--gold:#a8741a;--bad:#c2412e;--good:#2f8a55;--info:#2e6f9e;color-scheme:light}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--ui)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1280px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line);position:sticky;top:0;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);z-index:5}
+header h1{margin:0;font-size:17px;letter-spacing:.14em;font-weight:800}
+header h1 span{color:var(--gold)}
+.live{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.live.on i{background:var(--good);box-shadow:0 0 0 4px color-mix(in srgb,var(--good) 25%,transparent)}
+.sp{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:8px 14px;font-weight:600}
+.btn:hover{border-color:var(--gold)}
+.btn.red{background:var(--bad);border-color:var(--bad);color:#fff;font-weight:800}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:#1a1405}
+.btn.sm{padding:5px 10px;font-size:12.5px;border-radius:8px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:14px 0}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.kpi span{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.kpi b{display:block;font-size:26px;font-weight:800;margin-top:4px}
+.kpi small{color:var(--muted)}
+.kpi.alert b{color:var(--bad)}
+.grid{display:grid;grid-template-columns:1.25fr 1fr;gap:14px}
+@media (max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+.card h2{margin:0 0 10px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;gap:8px;align-items:center}
+.totals{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.totals div{background:var(--panel2);border-radius:10px;padding:8px 10px}
+.totals span{display:block;font-size:11.5px;color:var(--muted)}
+.totals b{font-size:18px}
+.bars{display:flex;align-items:flex-end;gap:14px;height:150px;padding:10px 4px 0;border-bottom:1px solid var(--line);position:relative}
+.bar{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative}
+.bar div{width:100%;max-width:56px;background:var(--gold);border-radius:4px 4px 0 0;min-height:2px}
+.bar b{font-size:12px;margin-bottom:4px}
+.bar:hover div{filter:brightness(1.15)}
+.barlbl{display:flex;gap:14px;padding:6px 4px 0}.barlbl span{flex:1;text-align:center;font-size:12px;color:var(--muted)}
+.tip{position:fixed;pointer-events:none;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+.feed{max-height:420px;overflow:auto;display:grid;gap:2px}
+.ev{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:6px 4px;border-bottom:1px solid var(--line);font-size:13px}
+.ev time{color:var(--muted);font-size:12px}
+.ev .t{font-weight:700}
+.ev.hot .t{color:var(--bad)}
+.ev.money .t{color:var(--good)}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.toolbar input{flex:1;min-width:180px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
+.toolbar select{padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:8px 6px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel)}
+.tbl td{padding:8px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl tr:hover td{background:var(--panel2)}
+.tblwrap{overflow:auto;max-height:520px}
+.pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11.5px;background:var(--panel2);border:1px solid var(--line)}
+.pill.on{color:var(--good);border-color:color-mix(in srgb,var(--good) 50%,transparent)}
+.pill.kid{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
+.pill.ban{background:var(--bad);color:#fff}
+.who{font-weight:700}.mat{color:var(--muted);font-size:12px}
+.list{display:grid;gap:4px}.list div{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--line);font-size:13px}
+dialog{border:1px solid var(--line);border-radius:16px;background:var(--panel);color:var(--ink);padding:18px;width:min(560px,calc(100% - 32px));max-height:86vh}
+dialog::backdrop{background:rgba(0,0,0,.55)}
+dialog h3{margin:0 0 8px}
+dialog .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+dialog label{display:block;font-size:12px;color:var(--muted);margin-top:10px}
+dialog input[type=text],dialog input[type=number],dialog textarea,dialog select{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--line);background:var(--panel2)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,100%);background:var(--panel);border-left:1px solid var(--line);z-index:20;overflow:auto;padding:16px;box-shadow:-20px 0 60px rgba(0,0,0,.4)}
+.drawer h3{margin:0}.drawer .sec{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.mini{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.mini div{background:var(--panel2);border-radius:8px;padding:6px 8px}.mini span{display:block;font-size:11px;color:var(--muted)}
+.login{min-height:100vh;display:grid;place-items:center;padding:16px}
+.login form{width:min(380px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;display:grid;gap:10px}
+.login input{padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel2);font-size:16px}
+.err{color:var(--bad);min-height:18px;font-size:13px}
+.note{color:var(--muted);font-size:12.5px}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--gold);padding:10px 16px;border-radius:12px;z-index:60}
+</style>
+</head>
+<body>
+<div class="login" id="login">
+  <form id="lf">
+    <h1 style="margin:0;letter-spacing:.14em;font-size:18px">VERITAS LIFE <span style="color:var(--gold)">ADMIN</span></h1>
+    <div class="note">Game master website. Players never see this page.</div>
+    <input type="password" id="pw" placeholder="Admin password" autocomplete="current-password" required>
+    <div class="err" id="lerr" role="alert"></div>
+    <button class="btn gold" type="submit">Enter</button>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header>
+    <h1>VERITAS LIFE <span>ADMIN</span></h1>
+    <div class="live" id="live"><i></i><span>connecting…</span></div>
+    <div class="sp"></div>
+    <button class="btn" id="bAnn">📢 Announce</button>
+    <button class="btn" id="bParty">🎉 Start a party</button>
+    <button class="btn red" id="bRaid">🚨 Send bandits</button>
+    <button class="btn sm" id="bTheme" title="Switch light / dark">Theme</button>
+  </header>
+  <div class="wrap">
+    <section class="kpis" id="kpis"></section>
+    <div class="grid">
+      <div style="display:grid;gap:14px;min-width:0">
+        <div class="card"><h2>Players</h2>
+          <div class="toolbar"><input id="q" placeholder="Search name or matric (VUG/26/…)"><select id="sort"><option value="recent">Last seen</option><option value="new">Newest</option><option value="money">Richest</option><option value="level">Level</option><option value="discipline">Discipline</option></select></div>
+          <div class="tblwrap"><table class="tbl"><thead><tr><th>Student</th><th>Status</th><th>Level</th><th class="num">Money</th><th class="num">Discipline</th><th class="num">CGPA</th><th class="num">Day</th><th>Last seen</th></tr></thead><tbody id="ut"></tbody></table></div>
+        </div>
+        <div class="card"><h2>Students by level</h2><div id="lvchart"></div></div>
+        <div class="card"><h2>All-time totals</h2><div class="totals" id="totals"></div></div>
+      </div>
+      <div style="display:grid;gap:14px;align-content:start;min-width:0">
+        <div class="card"><h2>Live activity</h2><div class="feed" id="feed"></div></div>
+        <div class="card"><h2>Online now</h2><div class="list" id="onl"></div></div>
+        <div class="card"><h2>Richest</h2><div class="list" id="rich"></div></div>
+        <div class="card"><h2>Most discipline points</h2><div class="list" id="wild"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<dialog id="dRaid"><h3>🚨 Send bandits</h3>
+  <div class="note">Every player you target sees the attack in their game right now. Players who get taken must raise the ransom within 4 in-game days, or their character starts again from Day 1. Other players can send them money.</div>
+  <label>Who</label><select id="rTarget"><option value="all">Everyone online</option></select>
+  <label>Chance each player is kidnapped: <b id="rPct">35%</b></label><input type="range" id="rChance" min="0" max="100" value="35" style="width:100%">
+  <div class="note" id="rNote"></div>
+  <div class="row"><button class="btn red" id="rGo">Send them</button><button class="btn" onclick="this.closest('dialog').close()">Cancel</button></div></dialog>
+<dialog id="dAnn"><h3>📢 Announcement</h3><label>To</label><select id="aTarget"><option value="all">Everyone online</option></select><label>Message</label><textarea id="aText" rows="4" maxlength="400"></textarea>
+  <div class="row"><button class="btn gold" id="aGo">Send</button><button class="btn" onclick="this.closest('dialog').close()">Cancel</button></div></dialog>
+<dialog id="dParty"><h3>🎉 Start an off-campus party</h3><div class="note">Everybody online gets the notification. To go, they must sign out with an exeat, bribe Officer Tiger or use the fence.</div>
+  <label>Host name</label><input type="text" id="pHost" value="Big Dayo (400L)" maxlength="30"><label>Where</label><select id="pLoc"><option value="lodge2">Royal Villa Hostel</option><option value="lodge1">Peace Lodge</option><option value="lodge3">Graceland Annex</option></select>
+  <div class="row"><button class="btn gold" id="pGo">Start party</button><button class="btn" onclick="this.closest('dialog').close()">Cancel</button></div></dialog>
+<dialog id="dMoney"><h3>Give or take money</h3><label>Amount (negative to take)</label><input type="number" id="mAmt" value="50000" step="1000">
+  <div class="row"><button class="btn gold" id="mGo">Apply</button><button class="btn" onclick="this.closest('dialog').close()">Cancel</button></div></dialog>
+<div class="drawer" id="drawer" hidden></div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(()=>{
+const BASE=String(window.VL_API||'').replace(/\/+$/,'');const WSB=BASE?BASE.replace(/^http/,'ws'):(location.protocol==='https:'?'wss:':'ws:')+'//'+location.host;
+const $=s=>document.querySelector(s);const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const naira=n=>(n<0?'-':'')+'₦'+Math.abs(Math.round(n||0)).toLocaleString('en-US');
+const ago=t=>{if(!t)return '–';const s=(Date.now()-t)/1000;return s<60?'just now':s<3600?Math.floor(s/60)+'m ago':s<86400?Math.floor(s/3600)+'h ago':Math.floor(s/86400)+'d ago';};
+let T=null;try{T=sessionStorage.getItem('vl-admin');}catch(e){}
+try{const th=localStorage.getItem('vl-admin-theme');if(th)document.documentElement.dataset.theme=th;}catch(e){}
+$('#bTheme').onclick=()=>{const cur=document.documentElement.dataset.theme||(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');const n=cur==='light'?'dark':'light';document.documentElement.dataset.theme=n;try{localStorage.setItem('vl-admin-theme',n);}catch(e){}};
+async function api(p,b){const r=await fetch(BASE+p,{method:b?'POST':'GET',headers:{'Content-Type':'application/json',Authorization:'Bearer '+T},body:b?JSON.stringify(b):undefined});const j=await r.json().catch(()=>({}));if(r.status===401&&p!=='/api/admin/login'){T=null;try{sessionStorage.removeItem('vl-admin');}catch(e){}location.reload();}if(!r.ok)throw new Error(j.error||'Error');return j;}
+function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.append(d);setTimeout(()=>d.remove(),3200);}
+$('#lf').onsubmit=async e=>{e.preventDefault();$('#lerr').textContent='';try{const j=await fetch(BASE+'/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#pw').value})}).then(async r=>{const j=await r.json();if(!r.ok)throw new Error(j.error);return j;});T=j.token;try{sessionStorage.setItem('vl-admin',T);}catch(e){}start();}catch(x){$('#lerr').textContent=x.message;}};
+if(T)start();
+let ONLINE=[],USERS=[];
+function start(){$('#login').hidden=true;$('#app').hidden=false;loadStats();loadUsers();loadFeed();connect();setInterval(loadStats,10000);setInterval(loadUsers,15000);}
+async function loadStats(){const s=await api('/api/admin/stats');
+  const k=[['Online now',s.online,'playing right now'],['Players',s.users,s.playing+' made a character'],['New today',s.newToday,'accounts'],['Active today',s.activeToday,'logged in'],['Game money',naira(s.moneyInGame),'wallets + savings'],['Average level',s.avgLevel+'L',s.graduated+' graduated'],['Kidnapped now',s.kidnappedNow,'held by bandits',s.kidnappedNow>0],['Top-ups',s.purchases.n,naira(s.purchases.ng)+' real · '+(s.payments==='test'?'TEST MODE':'live')]];
+  $('#kpis').innerHTML=k.map(([a,b,c,al])=>'<div class="kpi'+(al?' alert':'')+'"><span>'+a+'</span><b class="num">'+b+'</b><small>'+c+'</small></div>').join('');
+  const t=s.totals;$('#totals').innerHTML=[['Bandit raids',t.raids],['Kidnapped',t.kidnapped],['Released / escaped',t.released],['Lost to bandits',t.banditDeaths],['Expelled',t.expelled],['Suspended',t.suspended],['Pickpocket attempts',t.thefts],['Boys called',t.fights],['Parties',t.parties],['Scandals',t.scandals],['Messages',t.messages],['Adult accounts',s.adults],['Banned',s.banned]].map(([a,b])=>'<div><span>'+a+'</span><b class="num">'+b+'</b></div>').join('');
+  const L=[100,200,300,400].map(l=>({l,n:(s.levels.find(x=>x.level===l)||{n:0}).n}));const mx=Math.max(1,...L.map(x=>x.n));
+  $('#lvchart').innerHTML='<div class="bars">'+L.map(x=>'<div class="bar" data-tip="'+x.l+' Level: '+x.n+' student'+(x.n===1?'':'s')+'"><b class="num">'+x.n+'</b><div style="height:'+(x.n/mx*100)+'%"></div></div>').join('')+'</div><div class="barlbl">'+L.map(x=>'<span>'+x.l+'L</span>').join('')+'</div>';
+  $('#rich').innerHTML=s.richest.map(u=>'<div><span class="who" data-u="'+u.id+'" style="cursor:pointer">'+esc(u.name)+'</span><span class="num">'+naira(u.money)+'</span></div>').join('')||'<div class="note">No players yet.</div>';
+  $('#wild').innerHTML=s.wildest.map(u=>'<div><span class="who" data-u="'+u.id+'" style="cursor:pointer">'+esc(u.name)+'</span><span class="num">'+u.discipline+' pts</span></div>').join('')||'<div class="note">No players yet.</div>';}
+document.addEventListener('mousemove',e=>{const b=e.target.closest&&e.target.closest('[data-tip]');const tp=$('#tip');if(!b){tp.hidden=true;return;}tp.hidden=false;tp.textContent=b.dataset.tip;tp.style.left=(e.clientX+12)+'px';tp.style.top=(e.clientY-30)+'px';});
+document.addEventListener('click',e=>{const u=e.target.closest&&e.target.closest('[data-u]');if(u)openUser(+u.dataset.u);});
+async function loadUsers(){const j=await api('/api/admin/users?q='+encodeURIComponent($('#q').value)+'&sort='+$('#sort').value);USERS=j.users;
+  $('#ut').innerHTML=USERS.map(u=>'<tr data-u="'+u.id+'" style="cursor:pointer"><td><div class="who">'+esc(u.name||'(no character yet)')+'</div><div class="mat">'+esc(u.matric)+(u.adult?'':' · under 18')+'</div></td><td>'+(u.banned?'<span class="pill ban">banned</span> ':'')+(u.online?'<span class="pill on">online</span> ':'')+(u.status==='kidnapped'?'<span class="pill kid">kidnapped</span>':u.status==='graduated'?'<span class="pill">graduated</span>':'')+'</td><td>'+u.level+'L</td><td class="num">'+naira(u.money)+'</td><td class="num">'+u.discipline+'</td><td class="num">'+(u.cgpa?u.cgpa.toFixed(2):'–')+'</td><td class="num">'+u.day+'</td><td>'+ago(u.last_seen)+'</td></tr>').join('')||'<tr><td colspan="8" class="note">No players yet. Share the game link.</td></tr>';
+  fillTargets();}
+let qt;$('#q').oninput=()=>{clearTimeout(qt);qt=setTimeout(loadUsers,250);};$('#sort').onchange=loadUsers;
+const HOT=['raid','kidnapped','ended','ban','caught_night','scandal','beaten'],MONEY=['purchase','transfer','admin_money'];
+function evText(e){const d=e.data||{},n='<b>'+esc(e.name||'Someone')+'</b>';switch(e.type){
+  case 'signup':return n+' created an account';case 'login':return n+' logged in';case 'online':return n+' came online';case 'offline':return n+' went offline';
+  case 'raid':return 'Bandit raid: '+d.targets+' player(s) targeted, '+d.taken+' taken';case 'kidnapped':return n+' was kidnapped (ransom '+naira(d.ransom)+')';case 'released':return n+' was released after paying';case 'escaped':return n+' escaped from the bandits';
+  case 'raid_safe':return n+' survived the raid';case 'raid_seen':return n+' is under attack';case 'ended':return n+' was '+(d.kind==='bandits'?'lost to bandits':d.kind)+(d.why?' for '+esc(d.why):'')+' · restarting';
+  case 'purchase':return n+' topped up '+naira(d.coins)+' ('+naira(d.ng)+' '+d.mode+')';case 'transfer':return n+' sent '+naira(d.amount)+' to '+esc(d.to);case 'theft':return n+(d.caught?' was caught pickpocketing ':' pickpocketed ')+esc(d.victim)+(d.amount?' ('+naira(d.amount)+')':'');
+  case 'boys':return n+' called the boys on '+esc(d.target);case 'party':return n+' started a party at '+esc(d.loc)+' (host '+esc(d.host)+')';case 'group':return n+' created group "'+esc(d.name)+'"';case 'room_visit':return n+' is visiting '+esc(d.host)+'\'s room';
+  case 'caught_night':return n+' was caught with someone at night';case 'scandal':return n+' is in a campus scandal';case 'semester':return n+(d.pass?' was promoted to '+d.level+'L':' is repeating '+d.level+'L');case 'beaten':return n+' was flogged by '+esc(d.by);
+  case 'announce':return 'Announcement sent to '+d.to+': "'+esc(d.text)+'"';case 'admin_money':return 'Admin '+(d.amount>0?'gave ':'took ')+naira(Math.abs(d.amount))+' '+(d.amount>0?'to ':'from ')+n;case 'admin_reset':return 'Admin reset '+n;case 'ban':return n+' was banned';case 'unban':return n+' was unbanned';
+  default:return n+' · '+esc(e.type);}}
+function evRow(e){return '<div class="ev'+(HOT.includes(e.type)?' hot':MONEY.includes(e.type)?' money':'')+'"><time>'+new Date(e.created).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'</time><div class="t">'+evText(e)+'</div></div>';}
+async function loadFeed(){const j=await api('/api/admin/events');$('#feed').innerHTML=j.events.map(evRow).join('')||'<div class="note">Nothing yet.</div>';j.events.forEach(e=>{if(e.id>lastEv)lastEv=e.id;});}
+var lastEv=0;function onFeed(evs){const f=$('#feed');evs.slice().reverse().forEach(e=>{if(e.id<=lastEv)return;lastEv=e.id;if(f.querySelector('.note'))f.innerHTML='';f.insertAdjacentHTML('afterbegin',evRow(e));});while(f.children.length>200)f.lastChild.remove();}
+function onOnline(list){ONLINE=list;$('#onl').innerHTML=ONLINE.map(p=>'<div><span class="who" data-u="'+p.id+'" style="cursor:pointer">'+esc(p.name)+(p.st==='kidnapped'?' <span class="pill kid">kidnapped</span>':'')+'</span><span class="mat">'+p.lvl+'L · '+esc(locName(p.loc))+'</span></div>').join('')||'<div class="note">Nobody online.</div>';fillTargets();}
+async function poll(){try{const j=await api('/api/admin/feed?after='+(lastEv||0));onFeed(j.events);onOnline(j.online||[]);$('#live').classList.add('on');$('#live span').textContent='live';}catch(e){$('#live').classList.remove('on');$('#live span').textContent='reconnecting…';}setTimeout(poll,document.hidden?10000:3000);}
+function connect(){poll();}
+function connectWS_unused(){const ws=new WebSocket(WSB+'/ws/admin?admin='+encodeURIComponent(T));
+  ws.onopen=()=>{$('#live').classList.add('on');$('#live span').textContent='live';};
+  ws.onclose=()=>{$('#live').classList.remove('on');$('#live span').textContent='reconnecting…';setTimeout(connect,3000);};
+  ws.onmessage=m=>{const d=JSON.parse(m.data);if(d.t==='feed'){const f=$('#feed');if(f.querySelector('.note'))f.innerHTML='';f.insertAdjacentHTML('afterbegin',evRow(d.e));while(f.children.length>200)f.lastChild.remove();}
+    if(d.t==='online'){ONLINE=d.list;$('#onl').innerHTML=ONLINE.map(p=>'<div><span class="who" data-u="'+p.id+'" style="cursor:pointer">'+esc(p.name)+(p.st==='kidnapped'?' <span class="pill kid">kidnapped</span>':'')+'</span><span class="mat">'+p.lvl+'L · '+esc(locName(p.loc))+'</span></div>').join('')||'<div class="note">Nobody online.</div>';fillTargets();}};}
+const LN={out:'outside',boys:'hostel',lecture:'Lecture Hall',library:'Library',vcafe:'Veritas Cafe',macd:'Mac D',ggs:'GGS',first:'First Cafe',second:'Second Cafe',chapel:'Chapel',admin:'Admin block',clinic:'Health Centre',centre:'Student Centre',mart:'Campus Mart',girls:'Girls Hostel',hadmin:'Hostel Office',barber:'Barber',lodge1:'Peace Lodge',lodge2:'Royal Villa',lodge3:'Graceland Annex',buka:'Junction Buka'};
+function locName(l){if(!l)return '–';if(l.startsWith('room:'))return 'in a hostel room';if(l.startsWith('in:'))return LN[l.slice(3)]||l.slice(3);return LN[l]||l;}
+function fillTargets(){['#rTarget','#aTarget'].forEach(sel=>{const s=$(sel);const v=s.value;s.innerHTML='<option value="all">Everyone online ('+ONLINE.length+')</option>'+USERS.filter(u=>u.name).map(u=>'<option value="'+u.id+'">'+esc(u.name)+' · '+esc(u.matric)+(u.online?' · online':'')+'</option>').join('');if([...s.options].some(o=>o.value===v))s.value=v;});rNote();}
+function rNote(){const all=$('#rTarget').value==='all';$('#rChance').disabled=!all;$('#rNote').textContent=all?'About '+Math.round(ONLINE.length*$('#rChance').value/100)+' of '+ONLINE.length+' online player(s) will be taken.':'This player will be taken for sure (applied the next time they are online).';}
+$('#rChance').oninput=()=>{$('#rPct').textContent=$('#rChance').value+'%';rNote();};$('#rTarget').onchange=rNote;
+$('#bRaid').onclick=()=>{fillTargets();$('#dRaid').showModal();};
+$('#rGo').onclick=async()=>{try{const j=await api('/api/admin/raid',{target:$('#rTarget').value,chance:$('#rChance').value/100});$('#dRaid').close();toast('Bandits sent: '+j.targets+' player(s) attacked, '+j.taken+' taken.');}catch(e){toast(e.message);}};
+$('#bAnn').onclick=()=>{fillTargets();$('#dAnn').showModal();};
+$('#aGo').onclick=async()=>{try{const j=await api('/api/admin/announce',{target:$('#aTarget').value,text:$('#aText').value});$('#dAnn').close();$('#aText').value='';toast('Sent to '+j.to+' player(s).');}catch(e){toast(e.message);}};
+$('#bParty').onclick=()=>$('#dParty').showModal();
+$('#pGo').onclick=async()=>{try{await api('/api/admin/party',{host:$('#pHost').value,loc:$('#pLoc').value});$('#dParty').close();toast('Party announced to everyone online.');}catch(e){toast(e.message);}};
+let curUser=null;
+async function openUser(id){const j=await api('/api/admin/user?id='+id);curUser=j.user;const u=j.user,g=j.game,d=$('#drawer');
+  d.innerHTML='<div style="display:flex;gap:10px;align-items:center"><div style="flex:1"><h3>'+esc(u.name)+'</h3><div class="mat">'+esc(u.matric)+' · '+(u.adult?'18+':'under 18')+' · '+(u.online?'<span class="pill on">online</span>':'last seen '+ago(u.last_seen))+(u.banned?' <span class="pill ban">banned</span>':'')+'</div></div><button class="btn sm" id="dX">Close</button></div>'+
+  '<div class="row" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px"><button class="btn sm red" id="uRaid">🚨 Send bandits to this player</button><button class="btn sm" id="uMoney">₦ Give / take money</button><button class="btn sm" id="uMsg">📢 Message</button><button class="btn sm" id="uReset">Reset to Day 1</button><button class="btn sm" id="uBan">'+(u.banned?'Unban':'Ban')+'</button></div>'+
+  '<div class="sec">Game</div><div class="mini"><div><span>Level</span><b>'+u.level+'L</b></div><div><span>Day</span><b>'+u.day+'</b></div><div><span>Money</span><b>'+naira(u.money)+'</b></div><div><span>Discipline</span><b>'+u.discipline+'</b></div><div><span>CGPA</span><b>'+(u.cgpa?u.cgpa.toFixed(2):'–')+'</b></div><div><span>Restarts</span><b>'+u.restarts+'</b></div><div><span>Dept</span><b>'+esc(g.dept||'–')+'</b></div><div><span>Suspicion</span><b>'+(g.suspicion||0)+'</b></div><div><span>Fines owed</span><b>'+naira(g.fineDebt)+'</b></div></div>'+
+  (g.captive?'<div class="sec">Held by bandits</div><div class="note">Ransom '+naira(g.captive.R)+' · raised '+naira(g.captive.raised)+' · '+g.captive.days+' day(s) left</div>':'')+
+  (g.needs?'<div class="sec">Needs</div><div class="mini">'+Object.entries(g.needs).map(([k,v])=>'<div><span>'+k+'</span><b>'+Math.round(v)+'%</b></div>').join('')+'</div>':'')+
+  '<div class="sec">Offences</div>'+((g.offences||[]).length?'<div class="list">'+g.offences.slice().reverse().map(o=>'<div><span>'+esc(o)+'</span></div>').join('')+'</div>':'<div class="note">Clean record.</div>')+
+  '<div class="sec">Exams</div>'+((g.exams||[]).length?'<div class="list">'+g.exams.map(e=>'<div><span>Day '+e.day+'</span><span>'+e.score+'% · '+e.grade+'</span></div>').join('')+'</div>':'<div class="note">No exams yet.</div>')+
+  '<div class="sec">Recent money</div><div class="list">'+(g.tx||[]).map(t=>'<div><span>'+esc(t.l)+'</span><span class="num" style="color:'+(t.a<0?'var(--bad)':'var(--good)')+'">'+naira(t.a)+'</span></div>').join('')+'</div>'+
+  '<div class="sec">Top-ups</div>'+(j.purchases.length?'<div class="list">'+j.purchases.map(p=>'<div><span>'+naira(p.coins)+' for '+naira(p.ng)+' ('+p.mode+')</span><span>'+ago(p.created)+'</span></div>').join('')+'</div>':'<div class="note">None.</div>')+
+  '<div class="sec">Activity</div><div class="list">'+j.events.map(e=>'<div><span>'+evText(Object.assign({name:u.name},e))+'</span><span class="mat">'+ago(e.created)+'</span></div>').join('')+'</div>';
+  d.hidden=false;$('#dX').onclick=()=>d.hidden=true;
+  $('#uRaid').onclick=async()=>{if(!confirm('Send bandits after '+u.name+'? They will be kidnapped.'))return;await api('/api/admin/raid',{target:u.id});toast('Bandits sent after '+u.name+'.');};
+  $('#uMoney').onclick=()=>{$('#dMoney').showModal();};
+  $('#uMsg').onclick=()=>{fillTargets();$('#aTarget').value=String(u.id);$('#dAnn').showModal();};
+  $('#uReset').onclick=async()=>{if(!confirm('Reset '+u.name+' to Day 1?'))return;await api('/api/admin/reset',{userId:u.id});toast('Reset sent.');};
+  $('#uBan').onclick=async()=>{await api('/api/admin/ban',{userId:u.id,banned:!u.banned});toast(u.banned?'Unbanned':'Banned');openUser(u.id);loadUsers();};}
+$('#mGo').onclick=async()=>{if(!curUser)return;await api('/api/admin/money',{userId:curUser.id,amount:+$('#mAmt').value});$('#dMoney').close();toast('Done.');};
+})();
+</script>
+</body>
+</html>
