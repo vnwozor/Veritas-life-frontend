@@ -2,7 +2,20 @@
 const VLIGHT={head:new THREE.MeshLambertMaterial({color:0xf4f1e2,emissive:0xfff2c0,emissiveIntensity:0.15}),tail:new THREE.MeshLambertMaterial({color:0x7a1414,emissive:0xff2a1a,emissiveIntensity:0.2}),
   glass:new THREE.MeshStandardMaterial({color:0x1d2a33,roughness:0.12,metalness:0.55}),tyre:new THREE.MeshStandardMaterial({color:0x151515,roughness:0.92}),rim:new THREE.MeshStandardMaterial({color:0xb8bcc2,roughness:0.3,metalness:0.75}),
   trim:new THREE.MeshStandardMaterial({color:0x1b1b1b,roughness:0.6}),chrome:new THREE.MeshStandardMaterial({color:0xd9dde2,roughness:0.2,metalness:0.85}),inside:new THREE.MeshLambertMaterial({color:0x17130f})};
-const VBODY={};function vbodyM(c){return VBODY[c]||(VBODY[c]=new THREE.MeshStandardMaterial({color:c,roughness:0.34,metalness:0.18}));}
+/* sky reflections: a small outdoor environment (sky gradient, bright horizon, sun) rendered once into a
+   reflection map, so car paint, chrome and glass mirror the sky the way real ones do */
+let ENVTEX=null;const ENV_MATS=[];
+function envTex(){if(ENVTEX!==null)return ENVTEX;try{const es=new THREE.Scene();const g=new THREE.SphereGeometry(50,32,16);const col=[];const pos=g.getAttribute('position');const c=new THREE.Color();
+    for(let i=0;i<pos.count;i++){const y=pos.getY(i)/50;if(y>0)c.setHex(0x9cc4e8).lerp(_envC.setHex(0xe8f1f7),Math.pow(1-y,4));else c.setHex(0x8a7a5e).lerp(_envC.setHex(0xd9d2c0),Math.pow(1+y,6));col.push(c.r,c.g,c.b);}
+    g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));es.add(new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide})));
+    const sunM=new THREE.Mesh(new THREE.SphereGeometry(4,16,8),new THREE.MeshBasicMaterial({color:0xffffff}));sunM.material.color.multiplyScalar(6);sunM.position.set(20,35,15);es.add(sunM);
+    const pm=new THREE.PMREMGenerator(renderer);ENVTEX=pm.fromScene(es,0.02).texture;pm.dispose();}catch(e){ENVTEX=false;}return ENVTEX;}
+const _envC=new THREE.Color();
+function envMat(m,k){const t=envTex();if(t){m.envMap=t;m.envMapIntensity=k;m.userData.envK=k;m.needsUpdate=true;ENV_MATS.push(m);}return m;}
+/* reflections fade at night (called from sky() with the daylight factor) */
+function envLevel(day){const f=0.12+0.88*Math.max(0,Math.min(1,day));for(const m of ENV_MATS)m.envMapIntensity=m.userData.envK*f;}
+envMat(VLIGHT.glass,1.1);envMat(VLIGHT.rim,0.9);envMat(VLIGHT.chrome,1.2);
+const VBODY={};function vbodyM(c){return VBODY[c]||(VBODY[c]=envMat(new THREE.MeshStandardMaterial({color:c,roughness:0.3,metalness:0.25}),0.75));}
 const VPROF={ // side silhouettes (x along the length, y up), metres before scaling: lower body, cabin glass, roof line
   sedan:{L:4.5,W:1.78,body:[[-2.25,0.3],[-2.31,0.7],[-2.22,0.95],[-1.32,1.0],[1.1,1.0],[2.14,0.86],[2.28,0.6],[2.22,0.3]],glass:[[-1.3,0.98],[-0.7,1.38],[0.42,1.4],[1.08,0.98]],roof:[-0.72,0.44,1.4],wb:[-1.38,1.4],tr:0.33},
   suv:{L:4.7,W:1.88,body:[[-2.35,0.4],[-2.38,0.95],[-2.33,1.12],[1.15,1.12],[2.26,1.0],[2.38,0.7],[2.33,0.4]],glass:[[-2.3,1.1],[-2.12,1.68],[0.55,1.71],[1.13,1.1]],roof:[-2.18,0.58,1.72],wb:[-1.45,1.5],tr:0.38},
@@ -94,7 +107,7 @@ function csShot(from,at,k){CS.cam={from,at,k:k||1.6};}
 /* a side-on shot of two people talking, framed in the top half so the dialog box doesn't cover them */
 function csTwoShot(a,b,dist,side){csShot(()=>{const mx=(a.x+b.x)/2,mz=(a.z+b.z)/2,dx=b.x-a.x,dz=b.z-a.z,l=Math.hypot(dx,dz)||1;const s2=side||1;const px=-dz/l*s2,pz=dx/l*s2;const d=dist||8;
     const wx=mx+px*d,wz=mz+pz*d;const L=Math.hypot(wx-mx,wz-mz)||1;const cl=S.inside?Math.min(d,6):camClear(mx,2.2,mz,(wx-mx)/L*0.95,0.3,(wz-mz)/L*0.95,d);return new THREE.Vector3(mx+px*cl,S.inside?6.2:2.9+cl*0.18,mz+pz*cl);},
-  ()=>new THREE.Vector3((a.x+b.x)/2,0.35,(a.z+b.z)/2),1.5);}
+  ()=>new THREE.Vector3((a.x+b.x)/2,camera.aspect>1?1.4:0.35,(a.z+b.z)/2),1.5);}
 /* follow someone from behind and above, pulled in when a building is in the way */
 function csFollow(a,dist,h){csShot(()=>{const dx=-Math.sin(a.dir),dz=-Math.cos(a.dir);const d=dist||12,hh=h||7;const ux=dx*0.85,uy=hh/Math.hypot(d,hh),uz=dz*0.85;const cl=S.inside?d:camClear(a.x,1.8,a.z,ux,uy,uz,Math.hypot(d,hh));
     return new THREE.Vector3(a.x+ux*cl,1.8+uy*cl,a.z+uz*cl);},()=>new THREE.Vector3(a.x+Math.sin(a.dir)*3,1.2,a.z+Math.cos(a.dir)*3),1.2);}
@@ -107,7 +120,8 @@ function csFrame(dt,now){if(!CS.on)return;dt*=(W.csSpeed||1);const t=now/1000;if
     else{if(a.face!=null){const want=typeof a.face==='number'?a.face:Math.atan2(a.face.x-a.x,a.face.z-a.z);a.dir+=angDiff(want,a.dir)*Math.min(1,dt*5);}
       const p=a.carryHow==='head'?'carryhead':a.carryHow==='front'?'carry':a.pose;pose(a.g,p,t+a.x,dt);}
     a.g.position.set(a.x,a.y||0,a.z);a.g.rotation.y=a.dir;}
-  if(CS.cam){const k=Math.min(1,dt*CS.cam.k);csResolve(CS.cam.from,_cv);csResolve(CS.cam.at,_ca);if(!CS.camInit){CS.camPos.copy(_cv);CS.camAt.copy(_ca);CS.camInit=true;}else{CS.camPos.lerp(_cv,k);CS.camAt.lerp(_ca,k);}
+  if(CS.cam){const k=Math.min(1,dt*CS.cam.k);csResolve(CS.cam.from,_cv);csResolve(CS.cam.at,_ca);
+    if(!S.inside){/* never put the camera inside a building */const dx=_cv.x-_ca.x,dy=_cv.y-_ca.y,dz=_cv.z-_ca.z,d=Math.hypot(dx,dy,dz);if(d>3){const cl=camClear(_ca.x,_ca.y,_ca.z,dx/d,dy/d,dz/d,d);if(cl<d-0.01){_cv.set(_ca.x+dx/d*cl,Math.max(_ca.y+dy/d*cl,_ca.y+1.2),_ca.z+dz/d*cl);}}}if(!CS.camInit){CS.camPos.copy(_cv);CS.camAt.copy(_ca);CS.camInit=true;}else{CS.camPos.lerp(_cv,k);CS.camAt.lerp(_ca,k);}
     camera.position.copy(CS.camPos);camera.lookAt(CS.camAt);cam.tx=CS.camAt.x;cam.tz=CS.camAt.z;}
   const w=host.clientWidth,h=host.clientHeight;const nowp=performance.now();
   for(let i=CS.bubbles.length-1;i>=0;i--){const b=CS.bubbles[i];if(nowp>b.until){b.e.remove();CS.bubbles.splice(i,1);continue;}b.a.g.getWorldPosition(v3);v3.y+=4.4;v3.project(camera);

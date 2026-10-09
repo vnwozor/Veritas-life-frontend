@@ -2,7 +2,7 @@
    Run: node build.js   (then commit index.html together with src/) */
 const fs = require('fs'), path = require('path');
 // EARLY modules run before the campus is built (they only need the 3D helpers); the rest run after everything else.
-const GROUPS = { EARLY: ['visuals.js', 'vehicles.js'], MODULES: ['arrival.js', 'life.js', 'stories.js', 'dating.js', 'crime.js', 'bandits.js', 'controls.js'] };
+const GROUPS = { EARLY: ['visuals.js', 'vehicles.js', 'arch.js'], MODULES: ['arrival.js', 'life.js', 'stories.js', 'dating.js', 'crime.js', 'bandits.js', 'controls.js', 'humans.js', 'render.js'] };
 let html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'); const used = [];
 for (const [name, files] of Object.entries(GROUPS)) {
   const A = '/*@@' + name + '@@*/', B = '/*@@END ' + name + '@@*/'; const i = html.indexOf(A), j = html.indexOf(B);

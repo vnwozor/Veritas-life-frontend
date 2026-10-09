@@ -68,3 +68,16 @@ node build.js
 ```
 
 That copies the modules into `index.html` between the `@@EARLY` / `@@MODULES` markers. Commit both.
+
+## Realistic people
+
+Near the camera, every character is drawn as a rigged, realistic human (`src/humans.js`). Far away, or with
+**Profile → Settings → People: Classic**, the old blocky characters are used. The data file `vendor/hm/hm.bin`
+is built from the free MakeHuman base mesh, morph targets, skeleton and eyes (released as CC0 by the
+MakeHuman project, makehumancommunity.org). To rebuild it from a MakeHuman checkout:
+
+    node tools/humans/build-humans.js <path>/makehuman/makehuman/data vendor/hm
+
+Each person's face, body and clothes come from their existing look (skin, top, trousers or skirt, shoes,
+hair style and colour, hijab), so nothing else in the game needs changing. Their skeleton copies the
+classic character's joints every frame, so every pose and cutscene works the same.

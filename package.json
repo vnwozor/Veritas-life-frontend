@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "node dev-server.js",
-    "vercel-build": "node deploy-build.js",
+    "vercel-build": "node build.js",
     "build": "node build.js"
   }
 }

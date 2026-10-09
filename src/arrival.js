@@ -50,7 +50,7 @@ async function arrivalCutscene(after){
   // Mr. Paulinus comes from the gate road
   const pl=csActor({look:PEOPLE.paulinus.look,x:6,z:93.5,dir:Math.PI/2,sp:3.4});const meetAt=out(0,-7.4);csWalk(pl,meetAt,3.4);
   csShot([meetAt.x+9,5,meetAt.z+1],()=>new THREE.Vector3(pl.x,1.2,pl.z),1.3);
-  await csUntil(()=>csArrived(pl),12000);pl.face=dad;dad.face=pl;mum.face=pl;me.face=pl;pl.pose='wave';csShot(()=>{const fx2=(dad.x+mum.x+me.x)/3,fz=(dad.z+mum.z+me.z)/3,dx=pl.x-fx2,dz=pl.z-fz,l=Math.hypot(dx,dz)||1;return new THREE.Vector3(pl.x+dx/l*5.5+dz/l*1.5,4.6,pl.z+dz/l*5.5-dx/l*1.5);},()=>new THREE.Vector3((dad.x+mum.x+me.x)/3,0.6,(dad.z+mum.z+me.z)/3),1.4);
+  await csUntil(()=>csArrived(pl),12000);pl.face=dad;dad.face=pl;mum.face=pl;me.face=pl;pl.pose='wave';csShot(()=>{const fx2=(dad.x+mum.x+me.x)/3,fz=(dad.z+mum.z+me.z)/3,dx=pl.x-fx2,dz=pl.z-fz,l=Math.hypot(dx,dz)||1;return new THREE.Vector3(pl.x+dx/l*6+dz/l*3.4,5,pl.z+dz/l*6-dx/l*3.4);},()=>new THREE.Vector3((dad.x+mum.x+me.x+pl.x)/4,camera.aspect>1?1.5:0.8,(dad.z+mum.z+me.z+pl.z)/4),1.4);
   await csWait(500);pl.pose='talk';
   const P_=PEOPLE.paulinus.name,hn=fx(hostel.name),hall='St. Joseph Hall',sir=F?'ma':'sir';
   await csTalk({who:'paulinus',kicker:'Gate Car Park · Resumption',text:'"Good morning sir, good morning madam. You are welcome to Veritas University. I am '+P_+', the Hall Administrator of '+hall+'. And this must be our new student, <b>'+S.name+'</b>."',

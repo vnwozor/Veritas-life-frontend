@@ -1,0 +1,2 @@
+Textures from Poly Haven (https://polyhaven.com), CC0 1.0 public domain: asphalt_02, leafy_grass, concrete_pavers, concrete_floor_02, dry_ground_01, corrugated_iron_02.
+Resized to 512x512 for mobile.
