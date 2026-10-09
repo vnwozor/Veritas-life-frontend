@@ -13,7 +13,7 @@ function hmLoad(){if(HMS.loading||HMS.ready||HMS.failed)return;HMS.loading=true;
   get(base+'hm.bin').catch(()=>{base='/';return get('/hm.bin');}).then(buf=>{HMS.d=hmParse(buf);
     HMS.eyeTex=new THREE.TextureLoader().load(base+'eye.png');
     /* motion-captured walk, run and idle (Mixamo clips from the three.js examples), retargeted in hmPose */
-    fetch(base+'clips.json').then(r=>r.ok?r.json():fetch('/clips.json').then(r2=>r2.json())).then(c=>{for(const k in c)for(const b in c[k].bones)c[k].bones[b]=new Float32Array(c[k].bones[b]);HMS.clips=c;}).catch(()=>{});HMS.eyeTex.encoding=THREE.sRGBEncoding;HMS.ready=true;HMS.loading=false;})
+    fetch(base+'clips.json').then(r=>r.ok?r.json():fetch('/clips.json').then(r2=>r2.json())).then(c=>{for(const k in c)for(const b in c[k].bones)c[k].bones[b]=new Float32Array(c[k].bones[b]);HMS.clips=c;}).catch(()=>{});HMS.eyeTex.encoding=THREE.sRGBEncoding;HMS.base=base;HMS.ready=true;HMS.loading=false;})
   .catch(e=>{console.warn('realistic humans unavailable',e);HMS.failed=true;HMS.loading=false;hmFallback();});}
 /* only if the data can't be loaded: show the classic bodies again so nobody is invisible */
 function hmFallback(){window.__hmHide=false;HMS.reg.forEach(s=>{const ud=s.userData;if(ud.hm)hmDetach(s);if(ud.J)ud.J.body.visible=true;});}
@@ -26,6 +26,15 @@ function hmMat(key,make){return HMS.mats[key]||(HMS.mats[key]=make());}
 function hmSkinMat(){return hmMat('skin',()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.52,metalness:0,skinning:true}));}
 function hmCloth(c,r,tex){const k='c'+c+'_'+r+(tex?'_t':'');return hmMat(k,()=>{const m=new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:0,skinning:true});
   if(tex){const src=ankaraM(c).map;m.map=src;m.color.setHex(0xffffff);}return m;});}
+/* photo skin and proxy textures (MakeHuman system assets, CC0) are applied when they arrive; until then the
+   material shows the average skin colour, so nobody flashes white or black */
+const HM_SKINREF=0x573828;
+function hmTex(file,cb){const L=HMS.texL||(HMS.texL={});if(L[file]){if(L[file].t)cb(L[file].t);else L[file].q.push(cb);return;}
+  const e=L[file]={t:null,q:[cb]};new THREE.TextureLoader().load((HMS.base||'/vendor/hm/')+file,t=>{t.encoding=THREE.sRGBEncoding;t.anisotropy=4;e.t=t;e.q.forEach(f=>{try{f(t);}catch(x){}});e.q=[];},undefined,()=>{});}
+function hmSkinTexMat(f){return hmMat('skinT'+(f?'f':'m'),()=>{const m=new THREE.MeshStandardMaterial({vertexColors:true,color:HM_SKINREF,roughness:0.5,metalness:0,skinning:true});
+  hmTex(f?'skin_f.jpg':'skin_m.jpg',t=>{m.map=t;m.color.setHex(0xffffff);m.needsUpdate=true;});return m;});}
+function hmProxyMat(file,tint){return hmMat('px'+file+'_'+tint,()=>{const m=new THREE.MeshStandardMaterial({color:tint,roughness:0.75,metalness:0,skinning:true,side:THREE.DoubleSide,alphaTest:0.45,transparent:false});
+  m.visible=false;hmTex(file,t=>{m.map=t;m.visible=true;m.needsUpdate=true;});return m;});}
 function hmEyeMat(){return hmMat('eye',()=>new THREE.MeshStandardMaterial({map:HMS.eyeTex,roughness:0.18,metalness:0,skinning:true,alphaTest:0.5}));}
 
 /* ---------- what a sim looks like -> body + outfit spec ---------- */
@@ -113,8 +122,17 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
     const sT=field(body,topS),sB=spec.dress||(spec.skirt&&!spec.robe)?null:field(body,botS),sS=spec.shoeStyle==='slides'?null:field(body,shoeS),M=0.03;
     const hid=i=>sT[i]>M||(sB&&sB[i]>M)||(sS&&sS[i]>M);const hd=new Uint8Array(NB);for(let i=0;i<NB;i++)hd[i]=hid(i)?1:0;
     const idx=[],src=D.bodyIdx;for(let k=0;k<src.length;k+=3){const a=src[k],b=src[k+1],c=src[k+2];if(hd[a]&&hd[b]&&hd[c])continue;idx.push(a,b,c);}
-    const geo=mk(bpos,Uint16Array.from(idx),D.bodyJ,D.bodyW,g=>{g.setAttribute('color',new THREE.BufferAttribute(col,3));g.setAttribute('normal',bfull.getAttribute('normal'));});
-    meshes.push(skinned(geo,hmSkinMat()));}
+    if(D.bodyVid&&D.bodyUV){/* photo-textured skin: split vertices along the UV seams; colour becomes a tone multiplier */
+      const vid=D.bodyVid,ns=vid.length,sp=new Float32Array(ns*3),sn=new Float32Array(ns*3),sc=new Float32Array(ns*3),sj=new Uint8Array(ns*4),sw=new Uint8Array(ns*4),bn0=bfull.getAttribute('normal').array;
+      const ref=_c2.setHex(HM_SKINREF),tr=Math.min(1.6,sk.r/ref.r),tg=Math.min(1.6,sk.g/ref.g),tb=Math.min(1.6,sk.b/ref.b);
+      for(let k=0;k<ns;k++){const i=vid[k];for(let a=0;a<3;a++){sp[k*3+a]=bpos[i*3+a];sn[k*3+a]=bn0[i*3+a];}for(let a=0;a<4;a++){sj[k*4+a]=D.bodyJ[i*4+a];sw[k*4+a]=D.bodyW[i*4+a];}
+        let m=1;const y=bpos[i*3+1];{const x=bpos[i*3],z=bpos[i*3+2];for(const E of [X.eyeL,X.eyeR]){const d=Math.hypot(x-E.x,(y-E.y)*1.6,z-E.z);if(d<0.3&&z>E.z-0.05)m*=0.75+0.25*sstep(0.15,0.3,d);}}
+        sc[k*3]=tr*m;sc[k*3+1]=tg*m;sc[k*3+2]=tb*m;}
+      const si=[],S2=D.bodyIdxS;for(let k=0;k<S2.length;k+=3){const a=S2[k],b=S2[k+1],c=S2[k+2];if(hd[vid[a]]&&hd[vid[b]]&&hd[vid[c]])continue;si.push(a,b,c);}
+      const geo=mk(sp,Uint16Array.from(si),sj,sw,g=>{g.setAttribute('color',new THREE.BufferAttribute(sc,3));g.setAttribute('normal',new THREE.BufferAttribute(sn,3));g.setAttribute('uv',new THREE.BufferAttribute(D.bodyUV,2));});
+      meshes.push(skinned(geo,hmSkinTexMat(f)));}
+    else{const geo=mk(bpos,Uint16Array.from(idx),D.bodyJ,D.bodyW,g=>{g.setAttribute('color',new THREE.BufferAttribute(col,3));g.setAttribute('normal',bfull.getAttribute('normal'));});
+    meshes.push(skinned(geo,hmSkinMat()));}}
   /* helper pools (subdivided once) */
   const pool=name=>{const off=D[name+'Off'],src=D[name+'Src'],wt=D[name+'Wt'],n=off.length-1,pos=new Float32Array(n*3);
     for(let k=0;k<n;k++){let x=0,y=0,z=0;for(let j=off[k];j<off[k+1];j++){const s=src[j]*3,w=wt[j];x+=P[s]*w;y+=P[s+1]*w;z+=P[s+2]*w;}pos[k*3]=x;pos[k*3+1]=y;pos[k*3+2]=z;}
@@ -129,7 +147,8 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   clip(tg,field(tg,shoeS),spec.shoeStyle==='sneakers'?0.065:spec.shoeStyle==='slides'?0.03:0.045,hmCloth(spec.shoes,spec.shoeStyle==='sneakers'?0.7:0.4));
   if(spec.skirt){const sk=pool('skirt');clip(sk,field(sk,(r,t,x,y,z)=>Math.min(y-skirtCut,(spec.dress||spec.robe?waistTop+0.15:waist+0.3)-y)),0.035,spec.dress||spec.robe?TOPM:BOTM,spec.ankara?(()=>{const u=new Float32Array(sk.n*2);for(let k=0;k<sk.n;k++){u[k*2]=(Math.atan2(sk.pos[k*3],sk.pos[k*3+2])/Math.PI+1)*2;u[k*2+1]=sk.pos[k*3+1]*0.32;}return u;})():null);}
   /* hair: a shell over the scalp with a smooth hairline */
-  const hs=spec.hairStyle;if(hs!=='bald'&&!spec.hijab&&!spec.mask){const th={low:0.045,waves:0.06,highfade:0.1,twists:0.24,locs:0.22,cornrows:0.06,braids:0.08,afro:0.75,natural:0.45,puff:0.07,bun:0.07,bob:0.12,ponytail:0.07}[hs]||0.06;
+  const pxHair=spec.hijab||spec.mask?null:({afro:'afro01',natural:'afro01',braids:'braid01',ponytail:'ponytail01',bob:'bob01'})[spec.hairStyle]||null,pxOK=pxHair&&D['px_'+pxHair+'Ref'];
+  const hs=pxOK?'low':spec.hairStyle;if(hs!=='bald'&&!spec.hijab&&!spec.mask){const th={low:0.045,waves:0.06,highfade:0.1,twists:0.24,locs:0.22,cornrows:0.06,braids:0.08,afro:0.75,natural:0.45,puff:0.07,bun:0.07,bob:0.12,ponytail:0.07}[hs]||0.06;
     const HM=hmMat('h'+spec.hairC,()=>new THREE.MeshStandardMaterial({color:spec.hairC,roughness:0.78,metalness:0,skinning:true}));const topY=X.headTop.y;
     clip(body,field(body,hairS),(i,s)=>{let o=0.012+th*sstep(0,hs==='afro'||hs==='natural'?0.7:0.22,s);if(hs==='highfade')o*=sstep(topY-1.5,topY-0.35,body.pos[i*3+1])*0.85+0.15;
       if(hs==='afro'||hs==='natural'||hs==='bob')o*=0.55+0.45*sstep(eyeY-0.4,topY-0.2,body.pos[i*3+1]);return o;},HM);
@@ -142,6 +161,15 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   /* balaclava */
   if(spec.mask){const mkS=(r,t,x,y,z)=>r===R.head||r===R.neck?Math.max(Math.abs(y-eyeY)-0.2,(eyeZ-0.55)-z):(r===R.torsoU?y-clavY:-1);
     clip(body,field(body,mkS),0.04,hmCloth(0x141414,0.95));}
+  /* fitted proxies (hair styles, eyebrows, eyelashes) */
+  const proxy=(name,mat,shadow)=>{const ref=D[name+'Ref'],sc=H.proxies&&H.proxies[name];if(!ref||!sc)return null;const n=ref.length/9,pos=new Float32Array(n*3);
+    const ax=(q,c)=>q?Math.abs(P[q[0]*3+c]-P[q[1]*3+c])/q[2]:1,sx=ax(sc.x,0),sy=ax(sc.y,1),sz=ax(sc.z,2);
+    for(let k=0;k<n;k++){const r=ref.subarray(k*9,k*9+9);for(let a=0;a<3;a++)pos[k*3+a]=P[r[0]*3+a]*r[3]+P[r[1]*3+a]*r[4]+P[r[2]*3+a]*r[5]+r[6+a]*[sx,sy,sz][a];}
+    const geo=mk(pos,D[name+'Idx'],D[name+'J'],D[name+'W'],g=>g.setAttribute('uv',new THREE.BufferAttribute(D[name+'UV'],2)));geo.computeVertexNormals();const m=skinned(geo,mat,shadow);meshes.push(m);return m;};
+  const hairTint=new THREE.Color(spec.hairC).lerp(_c1.setHex(0x3a2a20),0.35).multiplyScalar(2.2).getHex();
+  if(!spec.mask)proxy('px_brow',hmProxyMat('brow.png',0x9a8a80),false);
+  proxy('px_lash',hmProxyMat('lash.png',0xffffff),false);
+  if(pxOK)proxy('px_'+pxHair,hmProxyMat('hair_'+pxHair+'.png',hairTint),true);
   /* eyes */
   {const ref=D.eyeRef,n=ref.length/9,pos=new Float32Array(n*3),sc=H.eyeScale,V3=i=>[P[i*3],P[i*3+1],P[i*3+2]];
     const sx=Math.abs(P[sc.x[0]*3]-P[sc.x[1]*3])/sc.x[2],sy=Math.abs(P[sc.y[0]*3+1]-P[sc.y[1]*3+1])/sc.y[2],sz=Math.abs(P[sc.z[0]*3+2]-P[sc.z[1]*3+2])/sc.z[2];
@@ -178,7 +206,7 @@ function hmAttach(s){const ud=s.userData,J=ud.J,o=ud.o;if(!J||ud.hm)return;
   {const L=(X.wristNL.distanceTo(X.elbowNL)+X.wristNR.distanceTo(X.elbowNR))/2*S;const hold=[[J.umb,-L-0.02],[J.phone,-L-0.035],[J.book,-L+0.01]];
     hold.forEach(([o,y],i)=>{if(!o)return;save['hold'+i]=o.position.clone();o.position.y=y;});ud.hmHold=hold;}
   /* the procedural parts that the real body replaces */
-  const hide=[],robe=HM_ROBE(o),keepX=['puff','bun','ponytail'];J.body.traverse(m=>{if(!m.isMesh||m===J.blob)return;const t=m.userData.t,px=m.parent&&m.parent.userData.hairExtra;
+  const hide=[],robe=HM_ROBE(o),keepX=HMS.d&&HMS.d.px_ponytail01Ref?['puff','bun']:['puff','bun','ponytail'];J.body.traverse(m=>{if(!m.isMesh||m===J.blob)return;const t=m.userData.t,px=m.parent&&m.parent.userData.hairExtra;
     if(t==='b'||t==='jewel'||t==='headwear'||(t==='garment'&&!robe)||m.userData.hairCap||(px&&!keepX.includes(px))||(px&&o.hijab))hide.push(m);});
   H.hide=hide;ud.hm=H;hmShow(s,true);}
 const HM_ROBE=o=>!!(o.cassock||o.habit);

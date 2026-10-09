@@ -1,5 +1,5 @@
 /* Builds vendor/hm/hm.bin (+ eye.png) from the MakeHuman 1.x data folder (CC0).
-   usage: node tools/humans/build-humans.js <path to makehuman/data> <out dir>
+   usage: node tools/humans/build-humans.js <path to makehuman/data> <out dir> [makehuman system assets folder]
    The game (src/humans.js) turns this into rigged, realistic people at runtime:
    morph targets (African young male/female, weight, muscle, height, face shapes),
    a 20-bone game skeleton, clothes built from the MakeHuman "tights"/"skirt"/"hair" helpers
@@ -116,6 +116,30 @@ helper('tights',tightsF);helper('skirt',skirtF);helper('hair',hairF,{head:1});
  E.F.forEach(f=>{const vv=f.v.map((v,i)=>{const k=v+'/'+f.t[i];if(!map.has(k)){map.set(k,ref.length/9);ref.push(...refs[v]);uv.push(E.VT[f.t[i]][0],E.VT[f.t[i]][1]);}return map.get(k);});
    for(let i=1;i<vv.length-1;i++)idx.push(vv[0],vv[i],vv[i+1]);});
  put('eyeRef',Float32Array.from(ref));put('eyeUV',Float32Array.from(uv));put('eyeIdx',Uint16Array.from(idx));hdr.eyeScale=sc;}
+
+/* body UVs: MakeHuman's UV layout has seams, so vertices are split per (vertex, uv) pair.
+   bodyVid maps each split vertex back to its base vertex (all other per-vertex data stays on base ids). */
+{const map=new Map(),vid=[],uv=[],idx=[];
+ base.F.filter(f=>f.g==='body').forEach(f=>{const vv=f.v.map((v,i)=>{const k=v+'/'+f.t[i];if(!map.has(k)){map.set(k,vid.length);vid.push(v);uv.push(base.VT[f.t[i]][0],base.VT[f.t[i]][1]);}return map.get(k);});
+   idx.push(vv[0],vv[1],vv[2],vv[0],vv[2],vv[3]);});
+ put('bodyVid',Uint16Array.from(vid));put('bodyUV',Float32Array.from(uv));put('bodyIdxS',Uint16Array.from(idx));console.log('body split verts',vid.length);}
+
+/* proxies from the MakeHuman system assets (CC0): hair styles, eyebrows, eyelashes.
+   Fitted to the morphed body at runtime like the eyes; skin weights interpolated from the reference vertices. */
+hdr.proxies={};
+function proxy(name,dir,file,headOnly){const objF=path.join(dir,file+'.obj'),cloF=path.join(dir,file+'.mhclo');if(!fs.existsSync(objF)||!fs.existsSync(cloF)){console.log('proxy missing',name,dir);return;}
+  const E=parseObj(objF);const clo=fs.readFileSync(cloF,'utf8').split('\n');const sc={};const refs=[];let inV=false;
+  for(const l of clo){const p=l.trim().split(/\s+/);if(/^[xyz]_scale/.test(l))sc[p[0][0]]=[+p[1],+p[2],+p[3]];
+    else if(/^verts/.test(l))inV=true;else if(inV&&p.length>=9&&/^\d/.test(p[0]))refs.push(p.slice(0,9).map(Number));else if(inV&&p.length===1&&/^\d+$/.test(p[0]))refs.push([+p[0],+p[0],+p[0],1,0,0,0,0,0]);else if(/^delete_verts/.test(l))inV=false;}
+  if(refs.length!==E.V.length)throw new Error(name+' refs '+refs.length+' vs '+E.V.length);
+  const map=new Map(),ref=[],uv=[],idx=[],J=[],W=[];
+  E.F.forEach(f=>{const vv=f.v.map((v,i)=>{const k=v+'/'+f.t[i];if(!map.has(k)){map.set(k,ref.length/9);const r=refs[v];ref.push(...r);const t=E.VT[f.t[i]]||[0,0];uv.push(t[0],t[1]);
+      let w={};if(headOnly)w={head:1};else for(let a=0;a<3;a++){const bw=VW[r[a]];for(const b in bw)w[b]=(w[b]||0)+bw[b]*r[3+a];}if(!Object.keys(w).length)w={head:1};const tw=topW(w);J.push(...tw.j);W.push(...tw.q);}return map.get(k);});
+    for(let i=1;i<vv.length-1;i++)idx.push(vv[0],vv[i],vv[i+1]);});
+  put(name+'Ref',Float32Array.from(ref));put(name+'UV',Float32Array.from(uv));put(name+'Idx',Uint16Array.from(idx));put(name+'J',Uint8Array.from(J));put(name+'W',Uint8Array.from(W));
+  hdr.proxies[name]=sc;console.log('proxy',name,ref.length/9,'verts',idx.length/3,'tris');}
+{const A=process.argv[4];if(A){for(const h of ['afro01','braid01','ponytail01','bob01'])proxy('px_'+h,path.join(A,'hair',h),h,true);
+  proxy('px_brow',path.join(A,'eyebrows','eyebrow001'),'eyebrow001');proxy('px_lash',path.join(A,'eyelashes','eyelashes01'),'eyelashes01');}}
 
 /* morph targets (sparse, int16 at 1/4000 dm) */
 const T={am:'macrodetails/african-male-young',af:'macrodetails/african-female-young',
