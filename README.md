@@ -49,3 +49,22 @@ Locally, the admin password is `change-me-now` unless you set `ADMIN_PASSWORD`. 
 ## Payments
 
 `PAYMENTS_MODE=test` (the default): the Top up app gives ₦1,000,000 of game money for ₦20,000 **without charging anything**. To take real money, verify the payment (for example with Paystack) in `api/index.js` → `shop/buy` before crediting. The code marks the spot.
+
+## Password reset emails
+
+Players can reset their password with a 6-digit code sent to their email. Turn it on with **one** of these in Vercel → Settings → Environment Variables, then redeploy:
+
+- **Gmail (easiest):** `SMTP_USER` = your Gmail address, `SMTP_PASS` = a Gmail *app password* (Google Account → Security → 2-Step Verification → App passwords).
+- **Resend:** `RESEND_API_KEY` and `EMAIL_FROM` (needs a verified domain).
+
+Until then, "Forgot password" tells players to ask the admin. The admin API has `POST /api/admin/resetpass {userId}`, which returns a temporary password.
+
+## Editing the game code
+
+The big game file `index.html` contains the modules in `src/` (arrival scene, characters and stories, dating, Yahoo, bandits, vehicles, controls). Edit the file in `src/`, then run:
+
+```bash
+node build.js
+```
+
+That copies the modules into `index.html` between the `@@EARLY` / `@@MODULES` markers. Commit both.

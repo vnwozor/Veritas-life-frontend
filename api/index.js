@@ -4,11 +4,16 @@
 'use strict';
 const crypto = require('crypto');
 const R = require('../lib/redis');
+const mailer = require('../lib/mail');
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (process.env.VERCEL ? '' : 'change-me-now');
 const PAYMENTS_MODE = process.env.PAYMENTS_MODE || 'test';
 const PACKS = { p1: { ng: 1000, coins: 50000 }, p5: { ng: 5000, coins: 250000 }, p20: { ng: 20000, coins: 1000000 } };
 const MATRIC = /^VUG\/26\/[A-Z0-9]{2,12}(\/[A-Z0-9]{1,8})?$/;
+const DEPTS = ['CSC', 'SEN', 'CYB', 'BCH', 'MCB', 'ICH', 'ACC', 'BUS', 'BFN', 'MKT', 'ECO', 'MCM', 'POL', 'IRS', 'SOC', 'PSY', 'LAW', 'ENG', 'HIS', 'PHL', 'REL', 'NSC', 'PUH', 'MLS'];
+const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,24}$/;
+const normEmail = e => String(e || '').trim().toLowerCase();
+const maskEmail = e => { const [a, d] = String(e).split('@'); return a.slice(0, 2) + '***@' + d; };
 const ONLINE_MS = 12000;
 const now = () => Date.now();
 const J = s => { try { return JSON.parse(s); } catch (e) { return null; } };
@@ -21,8 +26,9 @@ const pair = (a, b) => 'dm:' + Math.min(a, b) + ':' + Math.max(a, b);
 
 /* ---------- helpers on top of Redis ---------- */
 async function user(id) { const u = R.hash(await R.cmd('HGETALL', 'user:' + id)); return u.matric ? normUser(id, u) : null; }
-function normUser(id, u) { return { id: +id, matric: u.matric, pass: u.pass, adult: u.adult === '1', name: u.name || '', female: u.female === '1', created: +u.created || 0, last_seen: +u.last_seen || 0, banned: u.banned === '1', money: +u.money || 0, level: +u.level || 100, day: +u.day || 1, discipline: +u.discipline || 0, cgpa: +u.cgpa || 0, status: u.status || 'new', restarts: +u.restarts || 0, place: u.place || '' }; }
-const pub = u => ({ id: u.id, matric: u.matric, name: u.name || 'New student', adult: u.adult, female: u.female, level: u.level, banned: u.banned });
+function normUser(id, u) { return { id: +id, matric: u.matric, pass: u.pass, adult: u.adult === '1', fullname: u.fullname || '', email: u.email || '', dept: u.dept || '', age: +u.age || 0, dating: +u.dating || 0, name: u.name || '', female: u.female === '1', created: +u.created || 0, last_seen: +u.last_seen || 0, banned: u.banned === '1', money: +u.money || 0, level: +u.level || 100, day: +u.day || 1, discipline: +u.discipline || 0, cgpa: +u.cgpa || 0, status: u.status || 'new', restarts: +u.restarts || 0, place: u.place || '' }; }
+const pub = u => ({ id: u.id, matric: u.matric, name: u.name || 'New student', adult: u.adult, female: u.female, level: u.level, banned: u.banned, dept: u.dept, dating: u.dating || 0 });
+const own = u => Object.assign(pub(u), { fullname: u.fullname, email: u.email, age: u.age });
 async function users(ids) { if (!ids.length) return []; const rows = await R.pipe(ids.map(id => ['HGETALL', 'user:' + id])); return rows.map((r, i) => { const u = R.hash(r); return u.matric ? normUser(ids[i], u) : null; }).filter(Boolean); }
 async function names(ids) { ids = [...new Set(ids.map(Number))].filter(Boolean); if (!ids.length) return {}; const r = await R.pipe(ids.flatMap(id => [['HGET', 'user:' + id, 'name'], ['HGET', 'user:' + id, 'matric']])); const o = {}; ids.forEach((id, i) => { o[id] = r[i * 2] || r[i * 2 + 1] || 'Student'; }); return o; }
 async function authId(req) { const h = req.headers.authorization || ''; const t = h.startsWith('Bearer ') ? h.slice(7) : null; if (!t) return null; const id = await R.cmd('GET', 'sess:' + t); return id ? +id : null; }
@@ -104,6 +110,19 @@ async function handle(me, m, out, ctx) {
       const known = Math.random() < 0.45; await addEffect(to, 'robbed', { amount: amt, by: me, byName: nm[me], known }); out.push({ t: 'steal_res', ok: true, amount: amt }); await logEvent('theft', me, { victim: nm[to], amount: amt, known }); break; }
     case 'beat': { const to = +m.to; if (!to || to === me) return; const nm = await names([me, to]); await addEffect(to, 'beaten', { byName: nm[me], why: clean(m.why, 80) || 'what you did' }); await logEvent('boys', me, { target: nm[to] }); break; }
     case 'party': { const loc = ['lodge1', 'lodge2', 'lodge3'].includes(m.loc) ? m.loc : 'lodge2'; await startParty(me, (await names([me]))[me], loc); break; }
+    case 'date_ask': { const to = +m.to; if (!to || to === me) return; const [a, b2] = await users([me, to]).then(L => [L.find(x => x.id === me), L.find(x => x.id === to)]);
+      if (!a || !b2) return; if (!a.adult || !b2.adult) { out.push({ t: 'note', text: 'Dating is only for players who are 18 or older.' }); break; }
+      if (a.dating) { out.push({ t: 'note', text: 'You are already in a relationship. Break up first.' }); break; }
+      if (b2.dating) { out.push({ t: 'note', text: (b2.name || 'They') + ' is already in a relationship.' }); break; }
+      if (await limited('dask:' + me + ':' + to, 2, 86400)) { out.push({ t: 'note', text: 'You already asked today. Give them some space.' }); break; }
+      await inbox(to, { t: 'date_req', from: me, name: a.name || 'A student' }); out.push({ t: 'note', text: 'You asked ' + (b2.name || 'them') + ' out. Wait for their answer.' }); break; }
+    case 'date_resp': { const to = +m.to; if (!to || to === me) return; const [a, b2] = await users([me, to]).then(L => [L.find(x => x.id === me), L.find(x => x.id === to)]); if (!a || !b2) return;
+      if (!m.accept) { await inbox(to, { t: 'note', text: (a.name || 'They') + ' said no, kindly.' }); break; }
+      if (a.dating || b2.dating || !a.adult || !b2.adult) { out.push({ t: 'note', text: 'That can\'t happen right now.' }); break; }
+      await R.pipe([['HSET', 'user:' + me, 'dating', to], ['HSET', 'user:' + to, 'dating', me]]);
+      out.push({ t: 'dating', with: to, name: b2.name }); await inbox(to, { t: 'dating', with: me, name: a.name }); await logEvent('dating', me, { with: b2.name }); break; }
+    case 'date_end': { const u0 = await user(me); const other = u0 && u0.dating; if (!other) return; await R.pipe([['HSET', 'user:' + me, 'dating', 0], ['HSET', 'user:' + other, 'dating', 0]]);
+      out.push({ t: 'dating', with: 0 }); await inbox(other, { t: 'dating', with: 0, by: u0.name || 'They' }); await logEvent('breakup', me, {}); break; }
   }
 }
 
@@ -139,23 +158,54 @@ module.exports = async function handler(req, res) {
     if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
     const b = req.method === 'POST' ? await body(req) : {};
     if (R.mock && process.env.VERCEL) return send(res, 503, { error: 'The game database is not connected yet. In Vercel: Storage → Upstash for Redis → Connect to this project, then redeploy.' });
-    if (p === 'config') return send(res, 200, { payments: PAYMENTS_MODE, packs: PACKS, storage: R.mock ? 'memory (connect Upstash Redis!)' : 'upstash' });
+    if (p === 'config') return send(res, 200, { payments: PAYMENTS_MODE, packs: PACKS, storage: R.mock ? 'memory (connect Upstash Redis!)' : 'upstash', email: mailer.ready, depts: DEPTS });
     if (p === 'signup' && req.method === 'POST') {
       if (await limited('su:' + ip, 60, 3600)) return send(res, 429, { error: 'Too many accounts from this network. Try again later.' });
       const m = normMatric(b.matric); if (!MATRIC.test(m)) return send(res, 400, { error: 'Matric number must look like VUG/26/1234.' });
+      const fullname = String(b.fullname || '').replace(/[^\p{L} .'\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (fullname.split(' ').filter(Boolean).length < 2) return send(res, 400, { error: 'Enter your full name (first name and surname).' });
+      const email = normEmail(b.email); if (!EMAIL.test(email)) return send(res, 400, { error: 'Enter a valid email address. You need it to reset your password.' });
+      const dept = String(b.dept || '').toUpperCase(); if (!DEPTS.includes(dept)) return send(res, 400, { error: 'Choose your department.' });
+      const age = Math.floor(+b.age); if (!(age >= 15 && age <= 70)) return send(res, 400, { error: 'Enter your real age (15 or older).' });
       if (String(b.password || '').length < 6) return send(res, 400, { error: 'Password must be at least 6 characters.' });
       if (await R.cmd('GET', 'matric:' + m)) return send(res, 409, { error: 'That matric number already has an account. Log in instead.' });
-      const id = await R.cmd('INCR', 'seq:user'); const t = token();
-      await R.pipe([['SET', 'matric:' + m, id], ['HSET', 'user:' + id, 'matric', m, 'pass', hashPass(b.password), 'adult', b.adult ? 1 : 0, 'created', now(), 'last_seen', now(), 'level', 100, 'status', 'new'], ['ZADD', 'z:created', now(), id], ['ZADD', 'z:seen', now(), id], ['SET', 'sess:' + t, id, 'EX', 30 * 86400], ['SADD', 'usess:' + id, t]]);
-      await logEvent('signup', id, { matric: m, adult: !!b.adult }); return send(res, 200, { token: t, user: pub(await user(id)), state: null });
+      if (await R.cmd('GET', 'email:' + email)) return send(res, 409, { error: 'That email already has an account. Log in, or use "Forgot password".' });
+      const id = await R.cmd('INCR', 'seq:user'); const t = token(); const adult = age >= 18;
+      await R.pipe([['SET', 'matric:' + m, id], ['SET', 'email:' + email, id], ['HSET', 'user:' + id, 'matric', m, 'pass', hashPass(b.password), 'adult', adult ? 1 : 0, 'fullname', fullname, 'email', email, 'dept', dept, 'age', age, 'created', now(), 'last_seen', now(), 'level', 100, 'status', 'new'], ['ZADD', 'z:created', now(), id], ['ZADD', 'z:seen', now(), id], ['SET', 'sess:' + t, id, 'EX', 30 * 86400], ['SADD', 'usess:' + id, t]]);
+      await logEvent('signup', id, { matric: m, dept, age }); return send(res, 200, { token: t, user: own(await user(id)), state: null });
+    }
+    if ((p === 'forgot' || p === 'reset') && req.method === 'POST') {
+      const ident = String(b.id || '').trim(); const key = ident.includes('@') ? 'email:' + normEmail(ident) : 'matric:' + normMatric(ident);
+      if (await limited('fp:' + ip, 20, 3600) || await limited('fp:' + key, 8, 3600)) return send(res, 429, { error: 'Too many tries. Wait an hour and try again.' });
+      const id = await R.cmd('GET', key); const u = id && await user(id);
+      if (p === 'forgot') {
+        if (!u) return send(res, 404, { error: 'No account found with that matric number or email.' });
+        if (!u.email) return send(res, 400, { error: 'This account has no email saved. Ask the game admin to reset your password.' });
+        if (!mailer.ready) return send(res, 501, { error: 'Password reset by email is not switched on yet. Ask the game admin to reset your password.' });
+        const code = String(crypto.randomInt(100000, 1000000));
+        await R.cmd('SET', 'reset:' + u.id, JSON.stringify({ h: crypto.createHash('sha256').update(code).digest('hex'), n: 0 }), 'EX', 900);
+        try { await mailer.send(u.email, 'Your Veritas Life reset code: ' + code, 'Hi ' + (u.fullname || u.name || 'there') + ',\n\nYour code to reset your Veritas Life password is:\n\n    ' + code + '\n\nIt works for 15 minutes. If you did not ask for this, ignore this email; your password stays the same.\n\nVeritas Life'); }
+        catch (e) { console.error('mail', e.message); return send(res, 502, { error: 'Could not send the email right now. Try again in a few minutes, or ask the admin.' }); }
+        await logEvent('reset_code', u.id, {}); return send(res, 200, { ok: true, to: maskEmail(u.email) });
+      }
+      const rec = u && J(await R.cmd('GET', 'reset:' + u.id));
+      if (!rec) return send(res, 400, { error: 'That code has expired. Ask for a new one.' });
+      if (rec.n >= 5) { await R.cmd('DEL', 'reset:' + u.id); return send(res, 400, { error: 'Too many wrong codes. Ask for a new one.' }); }
+      const ok = crypto.createHash('sha256').update(String(b.code || '').trim()).digest('hex') === rec.h;
+      if (!ok) { rec.n++; await R.cmd('SET', 'reset:' + u.id, JSON.stringify(rec), 'EX', 900); return send(res, 400, { error: 'Wrong code. Check the email and try again.' }); }
+      if (String(b.password || '').length < 6) return send(res, 400, { error: 'New password must be at least 6 characters.' });
+      const old = await R.cmd('SMEMBERS', 'usess:' + u.id); if (old.length) await R.pipe(old.map(x => ['DEL', 'sess:' + x]));
+      const t = token(); await R.pipe([['HSET', 'user:' + u.id, 'pass', hashPass(b.password)], ['DEL', 'reset:' + u.id], ['DEL', 'usess:' + u.id], ['SET', 'sess:' + t, u.id, 'EX', 30 * 86400], ['SADD', 'usess:' + u.id, t]]);
+      await logEvent('password_reset', u.id, {}); return send(res, 200, { token: t, user: own(u), state: J(await R.cmd('GET', 'state:' + u.id)) });
     }
     if (p === 'login' && req.method === 'POST') {
-      const m = normMatric(b.matric); if (await limited('li:' + m, 12, 600)) return send(res, 429, { error: 'Too many attempts. Wait 10 minutes.' });
-      const id = await R.cmd('GET', 'matric:' + m); const u = id && await user(id);
-      if (!u || !checkPass(b.password || '', u.pass)) return send(res, 401, { error: 'Wrong matric number or password.' });
+      const ident = String(b.id || b.matric || '').trim(); const key = ident.includes('@') ? 'email:' + normEmail(ident) : 'matric:' + normMatric(ident);
+      if (await limited('li:' + key, 12, 600)) return send(res, 429, { error: 'Too many attempts. Wait 10 minutes.' });
+      const id = await R.cmd('GET', key); const u = id && await user(id);
+      if (!u || !checkPass(b.password || '', u.pass)) return send(res, 401, { error: ident.includes('@') ? 'Wrong email or password.' : 'Wrong matric number or password.' });
       if (u.banned) return send(res, 403, { error: 'This account has been banned by the game admin.' });
       const t = token(); await R.pipe([['SET', 'sess:' + t, u.id, 'EX', 30 * 86400], ['SADD', 'usess:' + u.id, t]]); await logEvent('login', u.id, {});
-      return send(res, 200, { token: t, user: pub(u), state: J(await R.cmd('GET', 'state:' + u.id)) });
+      return send(res, 200, { token: t, user: own(u), state: J(await R.cmd('GET', 'state:' + u.id)) });
     }
     if (p === 'logout' && req.method === 'POST') { const h = req.headers.authorization || ''; await R.cmd('DEL', 'sess:' + h.slice(7)); return send(res, 200, { ok: true }); }
 
@@ -178,7 +228,7 @@ module.exports = async function handler(req, res) {
       if (p === 'admin/user') {
         const id = +q('id'); const u = await user(id); if (!u) return send(res, 404, { error: 'No such user' });
         const [st, ev, pu] = await R.pipe([['GET', 'state:' + id], ['LRANGE', 'uev:' + id, 0, 39], ['LRANGE', 'upurch:' + id, 0, 19]]); const s = J(st) || {}; const on = (await onlineIds()).includes(id);
-        return send(res, 200, { user: Object.assign(pub(u), { created: u.created, last_seen: u.last_seen, money: u.money, day: u.day, discipline: u.discipline, cgpa: u.cgpa, status: u.status, restarts: u.restarts, online: on }),
+        return send(res, 200, { user: Object.assign(own(u), { created: u.created, last_seen: u.last_seen, money: u.money, day: u.day, discipline: u.discipline, cgpa: u.cgpa, status: u.status, restarts: u.restarts, online: on }),
           game: { dept: s.dept, trait: s.trait, bg: s.bg, needs: s.needs, skills: s.skills, offences: (s.offences || []).slice(-15), exams: s.exams || [], tx: (s.tx || []).slice(0, 25), car: s.car ? s.car.n : null, home: s.home, suspicion: s.suspicion, captive: s.captive || null, fineDebt: s.fineDebt || 0, stats: s.stats || {} },
           events: ev.map(J).filter(Boolean), purchases: pu.map(J).filter(Boolean) });
       }
@@ -192,6 +242,9 @@ module.exports = async function handler(req, res) {
       if (p === 'admin/announce' && req.method === 'POST') { const text = String(b.text || '').slice(0, 400); if (!text) return send(res, 400, { error: 'Empty message' }); const ids = b.target && b.target !== 'all' ? [+b.target] : await onlineIds(); for (const id of ids) await addEffect(id, 'announce', { text }); await logEvent('announce', null, { text, to: ids.length }); return send(res, 200, { ok: true, to: ids.length }); }
       if (p === 'admin/money' && req.method === 'POST') { const id = +b.userId, amt = Math.round(+b.amount || 0); if (!id || !amt) return send(res, 400, { error: 'userId and amount needed' }); await addEffect(id, amt > 0 ? 'credit' : 'debit', { amount: Math.abs(amt), label: amt > 0 ? 'Gift from the game admin' : 'Taken by the game admin' }); await logEvent('admin_money', id, { amount: amt }); return send(res, 200, { ok: true }); }
       if (p === 'admin/ban' && req.method === 'POST') { const id = +b.userId; await R.cmd('HSET', 'user:' + id, 'banned', b.banned ? 1 : 0); if (b.banned) { const ts = await R.cmd('SMEMBERS', 'usess:' + id); if (ts.length) await R.pipe(ts.map(t => ['DEL', 'sess:' + t])); await R.cmd('DEL', 'usess:' + id); await inbox(id, { t: 'banned' }); } await logEvent(b.banned ? 'ban' : 'unban', id, {}); return send(res, 200, { ok: true }); }
+      if (p === 'admin/resetpass' && req.method === 'POST') { const id = +b.userId; const u2 = await user(id); if (!u2) return send(res, 404, { error: 'No such user' });
+        const temp = crypto.randomBytes(4).toString('hex'); const ts = await R.cmd('SMEMBERS', 'usess:' + id); if (ts.length) await R.pipe(ts.map(t => ['DEL', 'sess:' + t]));
+        await R.pipe([['HSET', 'user:' + id, 'pass', hashPass(temp)], ['DEL', 'usess:' + id]]); await logEvent('admin_resetpass', id, {}); return send(res, 200, { ok: true, password: temp }); }
       if (p === 'admin/reset' && req.method === 'POST') { const id = +b.userId; await addEffect(id, 'reset', {}); await logEvent('admin_reset', id, {}); return send(res, 200, { ok: true }); }
       if (p === 'admin/party' && req.method === 'POST') { const loc = ['lodge1', 'lodge2', 'lodge3'].includes(b.loc) ? b.loc : 'lodge2'; await startParty(null, clean(b.host, 30) || 'The Admin', loc); return send(res, 200, { ok: true }); }
       return send(res, 404, { error: 'Unknown admin route' });
@@ -202,12 +255,21 @@ module.exports = async function handler(req, res) {
     if (!me) return send(res, 401, { error: 'Not logged in' });
     const u = await user(me); if (!u) return send(res, 401, { error: 'Not logged in' });
     if (u.banned) return send(res, 403, { error: 'This account has been banned by the game admin.' });
-    if (p === 'me') return send(res, 200, { user: pub(u), state: J(await R.cmd('GET', 'state:' + me)) });
+    if (p === 'me') return send(res, 200, { user: Object.assign(own(u), { datingName: u.dating ? (await names([u.dating]))[u.dating] : null }), state: J(await R.cmd('GET', 'state:' + me)), mail: mailer.ready });
+    if (p === 'account' && req.method === 'POST') {
+      const set = [];
+      if (b.fullname != null) { const f = String(b.fullname).replace(/[^\p{L} .'\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 60); if (f.split(' ').filter(Boolean).length < 2) return send(res, 400, { error: 'Enter your full name.' }); set.push('fullname', f); }
+      if (b.email != null) { const e = normEmail(b.email); if (!EMAIL.test(e)) return send(res, 400, { error: 'Enter a valid email address.' }); const taken = await R.cmd('GET', 'email:' + e); if (taken && +taken !== me) return send(res, 409, { error: 'That email is used by another account.' });
+        if (u.email && u.email !== e) await R.cmd('DEL', 'email:' + u.email); await R.cmd('SET', 'email:' + e, me); set.push('email', e); }
+      if (b.dept != null && !u.dept) { const d = String(b.dept).toUpperCase(); if (!DEPTS.includes(d)) return send(res, 400, { error: 'Choose your department.' }); set.push('dept', d); }
+      if (b.age != null && !u.age) { const a = Math.floor(+b.age); if (!(a >= 15 && a <= 70)) return send(res, 400, { error: 'Enter your real age.' }); set.push('age', a, 'adult', a >= 18 ? 1 : 0); }
+      if (set.length) await R.cmd('HSET', 'user:' + me, ...set); return send(res, 200, { user: own(await user(me)) });
+    }
     if (p === 'state' && req.method === 'POST') { await storeState(me, b.state); return send(res, 200, { ok: true }); }
     if (p === 'players') {
       const qq = String(q('q') || '').trim().toLowerCase(); const ids = (await R.cmd('ZREVRANGE', 'z:seen', 0, 999)).map(Number).filter(i => i !== me); const on = new Set(await onlineIds());
       const list = (await users(ids)).filter(x => x.name && !x.banned && (x.name.toLowerCase().includes(qq) || x.matric.toLowerCase().includes(qq))).slice(0, 60);
-      return send(res, 200, { players: list.map(x => ({ id: x.id, name: x.name, level: x.level, status: x.status, female: x.female, online: on.has(x.id), last_seen: x.last_seen })) });
+      return send(res, 200, { players: list.map(x => ({ id: x.id, name: x.name, level: x.level, status: x.status, female: x.female, online: on.has(x.id), last_seen: x.last_seen, dating: x.dating ? 1 : 0, adult: x.adult })) });
     }
     if (p === 'shop/buy' && req.method === 'POST') {
       const pk = PACKS[b.pack]; if (!pk) return send(res, 400, { error: 'Unknown pack' }); if (PAYMENTS_MODE !== 'test') return send(res, 501, { error: 'Live payments are not set up yet.' });

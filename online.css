@@ -8,8 +8,14 @@
 .vlg-tabs button.on{background:var(--gold,#e3b04b);color:#1a1405}
 .vlg-card form{display:grid;gap:6px}
 .vlg-card label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted,#a9b5a4);margin-top:6px}
-.vlg-card input[type=password],.vlg-matric{width:100%;box-sizing:border-box;border:1px solid rgba(239,230,207,.18);background:#0f231e;color:var(--cream,#efe6cf);border-radius:10px;font:inherit;font-size:16px}
-.vlg-card input[type=password]{padding:12px}
+.vlg-card input[type=password],.vlg-card input[type=email],.vlg-card input[type=number],.vlg-card input[name=ident],.vlg-card input[name=fullname],.vlg-card input[name=fpid],.vlg-card input[name=code],.vlg-card select,.vlg-matric{width:100%;box-sizing:border-box;border:1px solid rgba(239,230,207,.18);background:#0f231e;color:var(--cream,#efe6cf);border-radius:10px;font:inherit;font-size:16px}
+.vlg-card input[type=password],.vlg-card input[type=email],.vlg-card input[type=number],.vlg-card input[name=ident],.vlg-card input[name=fullname],.vlg-card input[name=fpid],.vlg-card input[name=code],.vlg-card select{padding:12px}
+.vlg-card select{appearance:auto}
+.vlg-f{display:grid;gap:6px}
+.vlg-row{grid-template-columns:1fr 92px;gap:10px}.vlg-row>div{display:grid;gap:6px;min-width:0}
+.vlg-help{margin:4px 0 2px;color:var(--muted,#a9b5a4);font-size:13px;line-height:1.45}.vlg-help b{color:var(--cream,#efe6cf)}
+.vlg-link{border:0;background:none;color:var(--gold,#e3b04b);font-size:13.5px;padding:10px;font-weight:600}
+.vlg-card{max-height:calc(100dvh - 32px);overflow:auto}
 .vlg-matric{display:flex;align-items:center;overflow:hidden}
 .vlg-matric span{padding:12px 4px 12px 12px;color:var(--gold,#e3b04b);font-weight:700;letter-spacing:.04em}
 .vlg-matric input{flex:1;min-width:0;border:0;background:none;color:inherit;font:inherit;font-size:16px;padding:12px 12px 12px 0;outline:none;text-transform:uppercase}
@@ -27,3 +33,4 @@
 .netlbl{position:absolute;left:0;top:0;pointer-events:auto;display:flex;gap:6px;align-items:baseline;white-space:nowrap;border:1px solid rgba(102,172,217,.6);background:rgba(10,30,45,.86);color:#e8f3fb;border-radius:12px;padding:3px 9px;font-size:11.5px;will-change:transform}
 .netlbl span{color:#9fd0ef;font-size:10px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good,#5cbf7f)}
+.acctbox{display:grid;gap:8px}.acctbox .gname{font-size:15px}
