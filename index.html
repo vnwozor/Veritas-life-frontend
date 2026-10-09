@@ -281,11 +281,15 @@ body.sheet-open #mapbar,body.phone-open #mapbar{display:none}
 .lbl.map{font-size:13px;padding:5px 10px}
 
 /* Cutscenes */
-.cine{position:absolute;inset:0;z-index:38;pointer-events:none}
+/* only the overlay div: body.cine must stay clickable (the class on <body> used to switch off every tap during scenes) */
+div.cine{position:absolute;inset:0;z-index:38;pointer-events:none}
 .cine .cbar{position:absolute;left:0;right:0;height:0;background:#050807;transition:height .45s ease}
 .cine .cbar.top{top:0}.cine .cbar.bot{bottom:0}
 .cine.on .cbar{height:9vh}
 .cine .cskip{position:absolute;right:14px;top:calc(env(safe-area-inset-top,0px) + 12px);pointer-events:auto;border:1px solid rgba(239,230,207,.35);background:rgba(10,20,17,.7);border-radius:16px;padding:7px 14px;font-weight:700;font-size:13px;z-index:2}
+.cine .cphone{position:absolute;left:14px;top:calc(env(safe-area-inset-top,0px) + 12px);pointer-events:auto;border:1px solid rgba(239,230,207,.35);background:rgba(10,20,17,.7);border-radius:16px;padding:6px 13px;font-size:15px;z-index:2;color:#f6efdc}
+.cine .cphone i{position:absolute;right:-6px;top:-6px;min-width:18px;height:18px;border-radius:9px;background:#d23b2b;color:#fff;font:700 11px/18px sans-serif;font-style:normal;text-align:center;padding:0 4px}
+body.cine #phoneWrap{z-index:39}
 .cine .ccap{position:absolute;left:50%;top:15vh;transform:translateX(-50%);text-align:center;color:#f6efdc;text-shadow:0 2px 14px rgba(0,0,0,.75);width:min(90vw,520px)}
 .cine .ccap b{display:block;font:700 clamp(26px,7vw,44px)/1.05 var(--display);letter-spacing:.06em}
 .cine .ccap span{display:block;margin-top:6px;font-size:14px;letter-spacing:.06em;color:var(--gold)}
@@ -561,6 +565,9 @@ const LOCS={
   fuel:{name:'Bwari Fuel Station',sub:'Petrol ₦900 per litre · 6 AM – 10 PM',x:-58,z:120,w:16,d:10,h:0,kind:'fuel',zone:'off',open:[6,22]},
   buka:{name:'Junction Buka',sub:'Off campus · cheap rice, amala & beans',x:24,z:120,w:12,d:9,h:5,wall:0xe8d2a8,roof:0x2f6b4f,inside:'cafe',zone:'off',open:[7,21]},
   gate:{name:'Main Gate',sub:'Security post · exeats to Bwari town',x:0,z:100,w:14,d:6,h:4,wall:0x2b3a52,roof:0x1d2638,kind:'gate'},
+  family:{name:'Your Family House',sub:'Mum & Dad · home food, pocket money, your old room',x:-92,z:180,w:16,d:12,h:6,wall:0xeadcc4,roof:0x7a3b2a,inside:'family',iname:'Family House · Living room',zone:'off'},
+  villa:{name:'Bwari Hills Duplex',sub:'House for sale · ₦4,500,000 · garage for 3 cars',x:98,z:180,w:16,d:12,h:8,wall:0xf2ead8,roof:0x2b4f8a,inside:'selfcon',iname:'Bwari Hills Duplex · Living room',zone:'off',tier:2,own:true,price:4500000},
+  garage:{name:'Duplex Garage',sub:'Bwari Hills Duplex · your cars',x:80,z:181,w:12,d:8,h:0,kind:'garage',zone:'off'},
   gatepark:{name:'Gate Car Park',sub:'Visitors & parents · drop-off at resumption',x:26,z:101.8,w:24,d:6.6,h:0,kind:'gatepark'},
 };
 for(const id in LOCS){const L=LOCS[id];L.id=id;const cand=[];
@@ -757,7 +764,11 @@ function makeProp(kind){const g=new THREE.Group();
 /* ================= CUTSCENES ================= */
 const CS={on:false,skip:false,actors:[],bubbles:[],cam:null,camPos:new THREE.Vector3(),camAt:new THREE.Vector3(),focus:null};
 const SKIP={};
-function csEl(){if(W.csEl)return W.csEl;const d=el('div','cine','<div class="cbar top"></div><div class="cbar bot"></div><div class="ccap" hidden></div><button class="cskip">Skip ›</button>');$('#app').append(d);d.querySelector('.cskip').onclick=()=>{CS.skip=true;if(UI.dlg){UI.dlgQ=[];closeDlg();}};W.csEl=d;return d;}
+function csEl(){if(W.csEl)return W.csEl;const d=el('div','cine','<div class="cbar top"></div><div class="cbar bot"></div><div class="ccap" hidden></div><button class="cphone" aria-label="Phone">✉<i hidden></i></button><button class="cskip">Skip ›</button>');$('#app').append(d);d.querySelector('.cskip').onclick=()=>{CS.skip=true;if(UI.dlg){UI.dlgQ=[];closeDlg();}};
+  /* the phone stays usable during a scene: read and answer your messages, the scene carries on behind */
+  const ph=d.querySelector('.cphone');ph.onclick=()=>{if(UI.phone)closePhone();else openPhone('msgs');};
+  setInterval(()=>{if(!CS.on||!S)return;const n=(S.msgs||[]).filter(m=>!m.read).length+(S.groups||[]).reduce((a,g)=>a+(g.unread||0),0);const b=ph.querySelector('i');b.hidden=!n;b.textContent=n>9?'9+':n;},1000);
+  W.csEl=d;return d;}
 function csStart(){CS.on=true;CS.skip=false;CS.actors=[];document.body.classList.add('cine');const d=csEl();d.hidden=false;void d.offsetWidth;d.classList.add('on');if(ACT)stopAction(true);if(UI.sheet)closeSheet();if(UI.phone)closePhone();}
 function csEnd(){CS.on=false;document.body.classList.remove('cine');const d=csEl();d.classList.remove('on');setTimeout(()=>{if(!CS.on)d.hidden=true;},400);CS.bubbles.forEach(b=>b.e.remove());CS.bubbles=[];csCaption(null);CS.cam=null;W.camHold=null;}
 function csCaption(t,sub){const c=csEl().querySelector('.ccap');if(!t){c.hidden=true;return;}c.innerHTML='<b>'+fx(t)+'</b>'+(sub?'<span>'+fx(sub)+'</span>':'');c.hidden=false;c.classList.remove('go');void c.offsetWidth;c.classList.add('go');}
@@ -772,7 +783,7 @@ function csArrived(a){return !a.path||a.i>=a.path.length;}
 function csCarry(a,prop,how){if(a.carry){a.carry.parent&&a.carry.parent.remove(a.carry);a.carry=null;}a.carryHow=how||null;if(!prop)return;const J=a.g.userData.J;
   if(how==='head'){J.hd.add(prop);prop.position.set(0,0.31,0);prop.scale.setScalar(1/1.6);prop.rotation.set(0,Math.PI/2,0);}
   else if(how==='hand'){J.elR.add(prop);prop.position.set(0,-0.42,0.02);prop.scale.setScalar(1/1.6);prop.rotation.set(0,0,0);}
-  else{J.torso.add(prop);prop.position.set(0,0.1,0.26);prop.scale.setScalar(1/1.6*0.9);prop.rotation.set(0,0,0);}a.carry=prop;}
+  else{J.torso.add(prop);prop.position.set(0,0.1,0.26);prop.scale.setScalar(1/1.6*0.9);prop.rotation.set(0,0,0);}prop.userData.csProp=1;a.carry=prop;}
 function csSay(a,text,ms){const e=el('div','say3d',fx(text));$('#app').append(e);const b={e,a,until:performance.now()+(ms||3200)};CS.bubbles.forEach(x=>{if(x.a===a)x.until=0;});CS.bubbles.push(b);return csWait(Math.min(ms||3200,6000)*0.85).catch(e2=>{throw e2;});}
 function csShot(from,at,k){CS.cam={from,at,k:k||1.6};}
 /* a side-on shot of two people talking, framed in the top half so the dialog box doesn't cover them */
@@ -797,7 +808,9 @@ function csFrame(dt,now){if(!CS.on)return;dt*=(W.csSpeed||1);const t=now/1000;if
   const w=host.clientWidth,h=host.clientHeight;const nowp=performance.now();
   for(let i=CS.bubbles.length-1;i>=0;i--){const b=CS.bubbles[i];if(nowp>b.until){b.e.remove();CS.bubbles.splice(i,1);continue;}b.a.g.getWorldPosition(v3);v3.y+=4.4;v3.project(camera);
     if(v3.z>1){b.e.style.display='none';continue;}b.e.style.display='';b.e.style.transform='translate('+((v3.x+1)/2*w).toFixed(0)+'px,'+((1-v3.y)/2*h).toFixed(0)+'px) translate(-50%,-100%)';}}
-function csClear(){CS.actors.forEach(a=>{if(!a.keep&&a.g.parent&&a.g!==player)a.g.parent.remove(a.g);});CS.actors=[];}
+function csClear(){CS.actors.forEach(a=>{if(a.carry)csCarry(a,null);if(!a.keep&&a.g.parent&&a.g!==player)a.g.parent.remove(a.g);});CS.actors=[];}
+/* drop anything a cutscene left in the player's hands (a suitcase, a bucket...) */
+function csDropAll(){const J=player&&player.userData.J;if(!J)return;['torso','hd','elR','elL'].forEach(k=>{const j=J[k];if(!j)return;j.children.slice().forEach(c=>{if(c.userData&&c.userData.csProp)j.remove(c);});});}
 /* ---- src/arch.js ---- */
 /* ================= ARCHITECTURE DETAIL =================
    Buildings stay simple boxes for collisions, but get real depth on top: framed, recessed windows with
@@ -953,6 +966,9 @@ function buildLoc(L){const g=new THREE.Group();g.position.set(L.x,0,L.z);g.userD
   if(L.kind==='gatepark'){part(G.box,0x4a4844,L.w,0.1,L.d,0,0.05,0,g,false);for(let i=0;i<=6;i++)part(G.box,0xf2f2ea,0.12,0.11,L.d-0.8,-L.w/2+1.2+i*3.6,0.07,0.2,g,false);
     const sg=new THREE.Mesh(new THREE.PlaneGeometry(4.6,1.1),new THREE.MeshBasicMaterial({map:textTex([['VISITORS PARKING','800 28px sans-serif']],256,56,'#1f2d44','#e3b04b')}));sg.position.set(L.w/2-2.6,2.6,L.d/2-0.25);sg.rotation.y=Math.PI;g.add(sg);part(G.cyl,0x444444,0.08,2.6,0.08,L.w/2-2.6,1.3,L.d/2-0.2,g);obsC(L.x+L.w/2-2.6,L.z+L.d/2-0.2,0.15);
     [[7.6,0x7a2331],[11.2,0xe8e2d0]].forEach(([x,c])=>{const v=buildVehicle(pick(['sedan','suv']),c);v.g.position.set(L.x+x-1.2,0,L.z+0.3);obsR(L.x+x-1.2,L.z+0.3,2.8,6.4);});return g;}
+  if(L.kind==='garage'){part(G.box,0x8f8a80,L.w,0.1,L.d,0,0.05,0,g,false);[[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>{const x=a*(L.w/2-0.3),z=b*(L.d/2-0.3);part(G.box,0x5a5a5a,0.25,3.4,0.25,x,1.7,z,g);obsC(L.x+x,L.z+z,0.2);});
+    part(G.box,0x2b4f8a,L.w+0.6,0.2,L.d+0.6,0,3.5,0,g);part(G.box,0xe8e2d0,L.w,3.3,0.2,0,1.7,L.d/2,g);obsR(L.x,L.z+L.d/2,L.w,0.3);
+    const sg=new THREE.Mesh(new THREE.PlaneGeometry(3.6,0.8),new THREE.MeshBasicMaterial({map:textTex([['GARAGE','800 30px sans-serif']],256,56,'#2b4f8a','#f2ead8')}));sg.position.set(0,3.9,-L.d/2-0.32);sg.rotation.y=Math.PI;g.add(sg);return g;}
   if(L.kind==='lot'){part(G.box,0x9a9488,L.w,0.1,L.d,0,0.05,0,g,false);part(G.box,0xe8dcc0,5,3,4,-9.5,1.5,-2.5,g);part(G.box,0x2b4f8a,5.6,0.3,4.6,-9.5,3.15,-2.5,g);obsR(L.x-9.5,L.z-2.5,5.3,4.3);
     const sg=new THREE.Mesh(new THREE.PlaneGeometry(9,1.6),new THREE.MeshBasicMaterial({map:textTex([['JUNCTION AUTOS','800 34px sans-serif'],['Tokunbo · hire purchase','600 20px sans-serif']],320,64,'#2b4f8a','#ffffff')}));sg.position.set(4,4.6,L.d/2-0.4);g.add(sg);[-0.5,8.5].forEach(x=>{part(G.cyl,0x444444,0.1,4,0.1,x,2,L.d/2-0.45,g);obsC(L.x+x,L.z+L.d/2-0.45,0.2);});
     [[-1.5,0xe8e2d0,0.5],[4,0x1f2d44,0.4],[9.5,0x2b2b2b,0.45]].forEach(([x,c,r])=>{const c2=makeCarLite(c);c2.position.set(L.x+x,0,L.z-0.5);c2.rotation.y=r;obsR(L.x+x,L.z-0.5,2.6,5.8,r);});
@@ -965,10 +981,10 @@ function buildLoc(L){const g=new THREE.Group();g.position.set(L.x,0,L.z);g.userD
   if(L.kind==='park'){obsC(L.x-9,L.z-5,0.3);obsC(L.x+9,L.z-5,0.3);obsR(L.x,L.z-6,14,1);part(G.box,0x7a5b3a,0.4,3.6,0.4,-9,1.8,-5,g);part(G.box,0x7a5b3a,0.4,3.6,0.4,9,1.8,-5,g);part(G.box,0x3e6b52,20,0.3,5,0,3.7,-5.5,g);part(G.box,0x8a6a45,14,0.5,1,0,0.4,-6,g);
     const sign=new THREE.Mesh(new THREE.PlaneGeometry(6,1.6),new THREE.MeshBasicMaterial({map:textTex([['KEKE PARK','700 34px sans-serif'],['₦100 · ANY ROUTE','600 22px sans-serif']],256,72,'#f2c230','#1a1405')}));
     sign.position.set(0,4.9,-5.5);sign.rotation.y=Math.PI;g.add(sign);const s2=sign.clone();s2.rotation.y=0;s2.position.z=-5.35;g.add(s2);return g;}
-  if(L.kind==='gate'){obsR(L.x-6,L.z-1,1.6,1.6);obsR(L.x+6,L.z-1,1.6,1.6);obsR(L.x+8.5,L.z+1.5,4,3);obsR(L.x-3,L.z-1,0.3,7);[-6,6].forEach(x=>part(G.box,0xd9cfb8,1.6,6,1.6,x,3,-1,g));part(G.box,0x2b3a52,13.6,1.8,0.4,0,6.2,-1,g);
+  if(L.kind==='gate'){obsR(L.x-6,L.z-1,1.6,1.6);obsR(L.x+6,L.z-1,1.6,1.6);obsR(L.x+8.5,L.z+1.5,4,3);obsR(L.x,L.z-1,0.3,7);[-6,6].forEach(x=>part(G.box,0xd9cfb8,1.6,6,1.6,x,3,-1,g));part(G.box,0x2b3a52,13.6,1.8,0.4,0,6.2,-1,g);
     const sign=new THREE.Mesh(new THREE.PlaneGeometry(13,1.6),new THREE.MeshBasicMaterial({map:textTex([['VERITAS UNIVERSITY · ABUJA','700 30px Georgia']],512,64,'#1f2d44','#e3b04b')}));
     sign.position.set(0,6.2,-1.25);sign.rotation.y=Math.PI;g.add(sign);const s2=sign.clone();s2.rotation.y=0;s2.position.z=-0.75;g.add(s2);
-    part(G.box,0xe7dccb,4,3,3,8.5,1.5,1.5,g);part(G.box,0x24324d,4.6,0.3,3.6,8.5,3.15,1.5,g);part(G.box,0xd23b2b,0.2,0.2,7,-3,1.1,-1,g);return g;}
+    part(G.box,0xe7dccb,4,3,3,8.5,1.5,1.5,g);part(G.box,0x24324d,4.6,0.3,3.6,8.5,3.15,1.5,g);part(G.box,0xd23b2b,0.2,0.2,7,0,1.1,-1,g);/* the red divider sits on the centre line, between the in and out lanes */return g;}
   part(G.box,wallMat(L.wall),L.w,L.h,L.d,0,L.h/2,0,g);part(G.box,0x8c7d68,L.w+0.3,0.5,L.d+0.3,0,0.25,0,g,false);obsR(L.x,L.z,L.w+0.3,L.d+0.3);
   {const ao=new THREE.Mesh(new THREE.PlaneGeometry(L.w+5,L.d+5),aoMat);ao.rotation.x=-Math.PI/2;ao.position.y=0.03;ao.renderOrder=1;g.add(ao);}
   if(L.flat){part(G.box,L.roof,L.w+0.6,0.6,L.d+0.6,0,L.h+0.3,0,g);part(G.box,L.wall,L.w+0.6,0.8,0.3,0,L.h+0.9,L.d/2+0.15,g);part(G.box,L.wall,L.w+0.6,0.8,0.3,0,L.h+0.9,-L.d/2-0.15,g);}
@@ -2021,7 +2037,7 @@ function encounter(type){if(ACT)stopAction(true);P.path=null;P.mode='idle';const
   dialog({who:'security',kicker:'Security checkpoint',text:lines[type],choices:C[type],warn:'Your choice may affect your discipline record.'});}
 
 /* ================= PAULINUS ================= */
-function inspection(){if(S.home)return;const here=S.at==='boys'||S.inside==='boys'||(ACT&&ACT.where==='boys');
+function inspection(){if(S.home)return;/* a night at your parents' house is excused */if(S.inside==='family'||(ACT&&ACT.where==='family'))return;const here=S.at==='boys'||S.inside==='boys'||(ACT&&ACT.where==='boys');
   if(!here){addDiscipline(2,'Absent at hostel roll call');S.suspicion+=15;S.plog.push('Absent at night roll call');
     msg('tunde','Guy where you dey?? Paulinus just came for roll call. He wrote your name. He said "tell him I am waiting".');return;}
   if(ACT)stopAction(true);
@@ -2867,12 +2883,14 @@ function updateNpcs(dt,now){const h=minOf(S.t)/60;const vis=!S.inside;W.navBudge
 const LANE=2.1;
 function trafficRules(dt){const L=[];for(const k of VEH){if(k.mode==='parked'||!k.g.parent)continue;L.push(k);}
   if(S.car&&myCarG&&myCarG.parent)L.push({g:myCarG,rd:S.car.dir,player:true});
+  if(W.csCar&&W.csCar.g&&W.csCar.g.parent)L.push({g:W.csCar.g,rd:W.csCar.g.rotation.y,player:true});
   for(const k of L){k.blk=null;if(k.player)continue;const p=k.g.position,fx=Math.sin(k.rd==null?k.dir:k.rd),fz=Math.cos(k.rd==null?k.dir:k.rd);let best=1e9;
     for(const o of L){if(o===k)continue;const q=o.g.position,dx=q.x-p.x,dz=q.z-p.z,al=dx*fx+dz*fz;if(al<=0.5||al>11)continue;const lat=Math.abs(dx*fz-dz*fx);
       const same=Math.cos(angDiff(o.rd==null?o.dir:o.rd,k.rd==null?k.dir:k.rd))>0.7;if(lat<(same?1.9:2.9)&&al<best){best=al;k.blk=o;k.blkD=al;}}}
   for(const k of L){if(k.player)continue;const o=k.blk;let stop=false;
     if(o){stop=true;/* two waiting for each other: a fixed order decides who goes first */if(o.blk===k&&!o.player&&VEH.indexOf(k)<VEH.indexOf(o))stop=false;}
-    if(stop&&(k.wait||0)>10){k.ghost=2;}if(k.ghost>0){k.ghost-=dt;stop=false;}
+    /* a very long deadlock is only broken where nobody can see it (never drive through a car on screen) */
+    if(stop&&(k.wait||0)>10&&Math.hypot(k.g.position.x-camera.position.x,k.g.position.z-camera.position.z)>70){k.ghost=2;}if(k.ghost>0){k.ghost-=dt;stop=false;}
     k.wait=stop?(k.wait||0)+dt:0;k.blocked=stop&&k.blkD<(o&&Math.cos(angDiff(o.rd||0,k.rd||0))>0.7?9:7);
     if(stop&&!k.blocked){/* ease off when something is ahead but not yet close */k.vf=Math.min(k.vf==null?1:k.vf,0.45);}}
   /* people on foot can't walk through a vehicle: they are pushed to its side */
@@ -3454,10 +3472,17 @@ async function arrivalCutscene(after){
   csStart();W.arrAfter=after;
   // the family car comes down Bwari road, through the gate, into the car park
   const car=buildVehicle('suv',pick([0x1b1b1b,0xc9ccd1,0x2b3a52,0x6b1d1d]),{plate:'ABJ '+ri(100,999)+' '+pick(['KW','GW','BW'])});
-  const V={x:70,z:135,dir:-Math.PI/2,i:0};car.g.position.set(V.x,0,V.z);car.g.rotation.y=V.dir;
-  const route1=[{x:4,z:135},{x:2,z:131},{x:2,z:96},{x:6,z:93},{x:spot.x-1,z:93},{x:spot.x,z:96.5},{x:spot.x,z:spot.z}];
+  const V={x:70,z:135+LANE,dir:-Math.PI/2,i:0};car.g.position.set(V.x,0,V.z);car.g.rotation.y=V.dir;
+  /* it keeps to the correct lane all the way (LANE: right-hand side of every road), like the traffic */
+  const route1=[{x:4,z:135+LANE},{x:-LANE,z:131},{x:-LANE,z:94},{x:3,z:90-LANE},{x:spot.x-3.5,z:90-LANE},{x:spot.x,z:93.5},{x:spot.x,z:97},{x:spot.x,z:spot.z}];
   player.visible=false;P.path=null;P.mode='idle';
-  let driving=true,steer=0;const carT=(dt)=>{if(!driving)return vehAnim(car,0,0,dt);const ox=V.x,oz=V.z;const before=V.dir;const done=stepAlong(V,route1,V.i>=5?3.2:9,dt);const d=Math.hypot(V.x-ox,V.z-oz);
+  let driving=true,steer=0;
+  /* the family car keeps to the traffic rules too: it waits behind (or for) any vehicle in front of it */
+  const ahead=()=>{const r=V.rd==null?V.dir:V.rd,fx=Math.sin(r),fz=Math.cos(r);for(const k of VEH){if(!k.g||!k.g.parent||!k.g.visible)continue;const q=k.g.position,dx=q.x-V.x,dz=q.z-V.z,al=dx*fx+dz*fz;if(al<=0.3||al>9)continue;if(Math.abs(dx*fz-dz*fx)<2.6)return k;}return null;};
+  const carT=(dt)=>{if(!driving)return vehAnim(car,0,0,dt);{const k=ahead();if(k){V.hold=(V.hold||0)+dt;
+      /* a car that won't clear the way (stuck head-on) is quietly sent elsewhere instead of being driven through */
+      if(V.hold>5&&k.mode==='ambient'){const far=NODES.filter(n=>Math.hypot(n.x-V.x,n.z-V.z)>90);const n=far.length?pick(far):null;if(n){k.x=n.x;k.z=n.z;k.path=null;k.i=0;k.g.position.set(n.x,0,n.z);}}
+      return vehAnim(car,0,steer,dt);}V.hold=0;}const ox=V.x,oz=V.z;const before=V.dir;const done=stepAlong(V,route1,V.i>=5?3.2:V.i>=4?6:9,dt);const d=Math.hypot(V.x-ox,V.z-oz);
     V.rd=V.rd==null?V.dir:V.rd+angDiff(V.dir,V.rd)*Math.min(1,dt*3.2);steer+=(clamp(angDiff(V.dir,V.rd)*1.4,-0.5,0.5)-steer)*Math.min(1,dt*5);
     car.g.position.set(V.x,0,V.z);car.g.rotation.y=V.rd;vehAnim(car,d,steer,dt);if(done){driving=false;}};
   CS.tick=carT;W.csCar=car;sfx('horn');
@@ -3564,7 +3589,7 @@ async function arrivalRoom(F){const I=getInt('boys');const g=intNav(I);const min
   await csWait(600);
   pl.face=me;await csSay(pl,'Settle in. Inspection is at night. Welcome to Veritas.',3000);csWalk(pl,{x:I.spawn.x,z:I.d/2-1.1},3);await csUntil(()=>csArrived(pl),6000);sfx('door');pl.g.visible=false;
   arrivalDone();}
-function arrivalDone(){const I=getInt('boys');csClear();CS.tick=null;if(W.csCar){if(W.csCar.g.parent)W.csCar.g.parent.remove(W.csCar.g);W.csCar=null;}
+function arrivalDone(){const I=getInt('boys');csClear();csDropAll();CS.tick=null;if(W.csCar){if(W.csCar.g.parent)W.csCar.g.parent.remove(W.csCar.g);W.csCar=null;}
   if(W.arrProps){W.arrProps.forEach(p=>{if(p.parent)p.parent.remove(p);});W.arrProps=null;}
   if(!S.inside){enterRoomForArrival();}
   P.x=I.spawn.x-0.4;P.z=I.spawn.z-1.6;P.dir=Math.PI;P.path=null;P.mode='idle';player.visible=true;player.position.set(P.x,0,P.z);
@@ -4655,6 +4680,104 @@ function hmManage(dt){if(HMS.failed)return;
 /* runs on its own clock so it keeps working while the game is paused (dialogs, phone, cutscenes) */
 {let last=performance.now();const loop=now=>{requestAnimationFrame(loop);const dt=Math.min(0.1,(now-last)/1000);last=now;try{hmManage(dt);}catch(e){console.warn('hm',e);}};requestAnimationFrame(loop);}
 if(window.__QA)window.__HMS={HMS,hmBuild,hmSpec,hmAttach,hmDetach,hmShow,makeSim,pose,randomLook,scene,camera,outdoor,CAST:typeof CAST!=='undefined'?CAST:null};
+/* ---- src/homes.js ---- */
+/* ================= HOMES: your family house, a house you can buy, and your garage =================
+   - Family House (Bwari): Mum and Dad live here. Eat Mum's food, talk, ask for pocket money once a week,
+     watch TV with Dad, sleep in your old room (the hostel excuses a night spent at home).
+   - Bwari Hills Duplex: buy it (cash). Then you can live there (no rent) and use its garage.
+   - Duplex Garage: keep every car you own. Park a car in, take another one out. With a garage,
+     Junction Autos lets you buy more cars: your current one is delivered to the garage. */
+INSIDE_HINT.family='Living room, dining table, your old bedroom, Mum & Dad';
+const HOUSE_PRICE=LOCS.villa.price;
+
+/* ---------- the family house interior ---------- */
+BUILD.family=function(I,id){shell(I,16,13,5,floorTex('#d8cdb8','#c4b79c','tile'),0xf0e6d0,5.5,0x7a3b2a);const hw=8,hd=6.5;
+  /* living room: sofa set facing the TV, rug, family photo */
+  const rug=part(G.box,0x7a2331,5,0.03,3.4,-3,0.02,-0.6,I.g,false);
+  const sofa=new THREE.Group();sofa.position.set(-3,0,0.9);I.g.add(sofa);part(G.box,0x3d2b22,4,0.6,1.1,0,0.4,0,sofa);part(G.box,0x3d2b22,4,0.9,0.3,0,0.95,0.45,sofa);part(G.box,0x3d2b22,0.3,0.8,1.1,-2,0.6,0,sofa);part(G.box,0x3d2b22,0.3,0.8,1.1,2,0.6,0,sofa);
+  [-1.2,0,1.2].forEach(x=>part(G.box,0xc9971c,0.6,0.35,0.15,x,0.95,0.25,sofa,false));
+  const tv=onWall(I,0,-3,2.9,3.2,1.8,0x223344,true);tv.material.emissive.setHex(0x2a6a9a);part(G.box,0x5a3d26,3.6,0.7,0.6,-3,0.35,-hd+0.6,I.g);
+  poster(I,2,-1,3,[['OUR FAMILY','700 28px Georgia'],['God bless this home','italic 22px Georgia']],'#f2ead8','#5a3d26',2.2,1.3);
+  /* dining table with food */
+  const tb=new THREE.Group();tb.position.set(4,0,-2);I.g.add(tb);part(G.box,0x6b4a2e,3,0.12,1.6,0,1.05,0,tb);[[-1.3,-0.6],[1.3,-0.6],[-1.3,0.6],[1.3,0.6]].forEach(([x,z])=>part(G.box,0x5a3d26,0.1,1.05,0.1,x,0.52,z,tb));
+  [[-0.7,0,0xd9562b],[0.1,0.2,0xf2efe6],[0.8,-0.1,0x8a5a2a]].forEach(([x,z,c])=>{part(G.cyl,0xf2efe6,0.32,0.08,0.32,x,1.15,z,tb,false);part(G.sph,c,0.24,0.1,0.24,x,1.2,z,tb,false);});
+  chair(I,4,-0.6,Math.PI,0x6b4a2e);chair(I,4,-3.4,0,0x6b4a2e);chair(I,2.2,-2,Math.PI/2,0x6b4a2e);chair(I,5.8,-2,-Math.PI/2,0x6b4a2e);
+  /* your old bedroom corner */
+  const bed=new THREE.Group();bed.position.set(-hw+1.8,0,-hd+2.4);I.g.add(bed);part(G.box,0x6b4a2e,2.4,0.5,4.2,0,0.25,0,bed);part(G.box,0xe8d9a8,2.2,0.3,4,0,0.65,0,bed,false);part(G.box,0x2b6fd9,2.25,0.1,2.6,0,0.83,0.6,bed,false);part(G.box,0xf2efe6,1.4,0.25,0.6,0,0.9,-1.6,bed,false);
+  const bp={x:bed.position.x,y:0.8,z:bed.position.z+0.3,r:0,pose:'lie'};
+  /* Mum and Dad */
+  I.dad=interiorSim(I,PARENT_LOOK.dad,'dad');I.mum=interiorSim(I,PARENT_LOOK.mum,'mum');
+  const sofaSeat={x:-2.2,y:0.05,z:0.85,r:Math.PI,pose:'sit'};
+  addObj(I,sofa,{id:'sofa',name:'Dad on the sofa',ly:2.4,spot:{x:-3,z:2.4},acts:()=>[
+    A('Watch TV with Dad','1h · the news, then football',()=>startAction('Watching TV with Dad',60,{where:id,place:sofaSeat,per:()=>{N('fun',0.5);N('stress',-0.2);},done:()=>{rel('dad',2);addMoodlet('Time with Dad',6,600);}})),
+    A('Talk with Dad','15m · school, money, life',()=>dadTalk()),
+    A('Ask Dad for pocket money','Once a week',()=>askHomeMoney(),{dis:homeMoneyWait()})]});
+  addObj(I,tb,{id:'table',name:'Dining table',ly:2.6,spot:{x:4,z:0.4},acts:()=>{const h=minOf(S.t)/60,meal=(h>=6&&h<10)||(h>=12&&h<16)||(h>=18&&h<22);
+    return [A('Eat Mum\'s cooking','30m · free · jollof, stew, plantain',()=>startAction('Eating at home',30,{where:id,place:{x:4,y:0,z:-0.6,r:Math.PI,pose:'eat'},per:()=>N('food',2.6),done:()=>{S.stats.meals++;rel('mum',2);addMoodlet('Mum\'s cooking',12,480);S.flags.homeMeal=dayOf(S.t)*10+Math.floor(minOf(S.t)/480);}}),{dis:!meal?'Mum serves food at breakfast, lunch and dinner time':S.flags.homeMeal===dayOf(S.t)*10+Math.floor(minOf(S.t)/480)?'You just ate. Mum says you will burst':null}),
+      A('Help Mum in the kitchen','40m',()=>startAction('Helping Mum',40,{where:id,place:{x:5.4,y:0,z:-4.6,r:0,pose:'serve'},per:()=>N('stress',-0.1),done:()=>{rel('mum',4);toast('Home','Mum tells you every family gist while you cut onions.','good');}}))];}});
+  addObj(I,bed,{id:'bed',name:'Your old bed',ly:2.4,spot:{x:bed.position.x+1.9,z:bed.position.z+1.2},acts:()=>[
+    A('Sleep','8h · your own room at home',()=>startAction('Sleeping',480,{sleep:true,where:id,place:bp,done:()=>{addMoodlet('Slept at home',10,600);toast('Morning','Mum is already in the kitchen. The house smells of fried plantain.','good');}})),
+    A('Nap','2h',()=>startAction('Napping',120,{sleep:true,where:id,place:bp}))]});
+  I.populate=()=>{resetInt(I);const h=minOf(S.t)/60;
+    if(h>=22||h<6){placeSim(I.dad,-hw+5,-hd+1.2,Math.PI,'stand');I.dad.g.visible=false;I.mum.g.visible=false;}
+    else{placeSim(I.dad,-2.2,0.85,Math.PI,'sit',0.05);placeSim(I.mum,(h>=17&&h<20)||(h>=7&&h<9)?5.4:3.2,(h>=17&&h<20)||(h>=7&&h<9)?-4.6:-0.4,(h>=17&&h<20)||(h>=7&&h<9)?0:Math.PI,(h>=17&&h<20)||(h>=7&&h<9)?'serve':'talk');}};};
+
+function homeMoneyWait(){const last=S.flags.homeMoney||-99;const d=dayOf(S.t)-last;return d<7?'Dad gave you money '+(d===0?'today':d===1?'yesterday':d+' days ago')+'. Next week':null;}
+function askHomeMoney(){if(homeMoneyWait())return;const base={ajebutter:10000,ajekpako:2000,scholar:4000}[S.bg]||4000;const r=S.rel.dad||50;
+  const amt=Math.round(base*(0.5+r/100)/500)*500;S.flags.homeMoney=dayOf(S.t);
+  dialog({who:'dad',kicker:'Your father',text:r<35?'"Money again? What did you do with the last one?" He sighs and gives you <b>'+naira(amt)+'</b>. "Spend it on books."':'"How is school? Are you reading?" He opens his wallet: <b>'+naira(amt)+'</b>. "Don\'t tell your mother how much."',
+    choices:[{t:'"Thank you Daddy"',fn:()=>{earn(amt,'Pocket money from Dad');rel('dad',2);return null;}}]});}
+function dadTalk(){const r=S.rel.dad||50,cg=S.cgpa||0;
+  dialog({who:'dad',kicker:'Your father',text:'"Sit down. How are your lectures? '+(cg?'They told me your CGPA is '+cg.toFixed(2)+'. '+(cg>=3.5?'I am proud of you.':'You can do better.'):'Your first results will show what you are doing.')+'"',
+    choices:[{t:'"School is going well"',fn:()=>{rel('dad',3);return '"Good. Keep your head down and finish strong."';}},
+      {t:'"I need advice about money"',fn:()=>{S.skills.business=(S.skills.business||0)+0.1;rel('dad',2);return '"Save a little from everything you get. Small small, it becomes big. And never borrow from those loan apps."';}},
+      {t:'"I want to buy a car"',fn:()=>{rel('dad',1);return S.car?'"You already have one. Take care of it."':'"Save half, I will think about the rest. Ask me properly in a message."';}}]});}
+
+/* ---------- the duplex you can buy ---------- */
+function ownsHouse(){return S.ownHouse==='villa';}
+function buyHouse(){if(ownsHouse())return;if(!spend(HOUSE_PRICE,'Bought Bwari Hills Duplex'))return toast('Not enough money','The duplex costs '+naira(HOUSE_PRICE)+' cash.','bad');
+  S.ownHouse='villa';S.home='villa';S.homeDue=1e9;S.garage=S.garage||[];xp(150,'Home owner');celebrate('You own a house!','Bwari Hills Duplex · with a garage for your cars');
+  msg('landlord','Congratulations on your new house! The keys and the garage remote are yours. No rent, ever.');save();}
+function sellHouse(){if(!ownsHouse())return;const val=Math.round(HOUSE_PRICE*0.8/1000)*1000;
+  dialog({who:'landlord',kicker:'Agent',text:'"I can sell it for you at <b>'+naira(val)+'</b>. Cars in the garage go with you."',choices:[{t:'Sell the house',fn:()=>{S.ownHouse=null;if(S.home==='villa'){S.home=null;S.homeDue=0;}const n=(S.garage||[]).length;
+    if(n){toast('Garage emptied',n+' car'+(n>1?'s were':' was')+' sold with the garage. You got the money.','good');(S.garage||[]).forEach(c=>earn(Math.round((CARS[c.model]||CARS.saloon).price*0.5/1000)*1000,'Sold '+c.n));S.garage=[];garageRefresh();}
+    earn(val,'Sold your house');return null;}},{t:'Keep it',fn:()=>null}]});}
+function villaActs(){const L=[];if(!ownsHouse()){L.push(A('Buy this house',naira(HOUSE_PRICE)+' cash · no rent, a garage for all your cars',()=>buyHouse(),{cost:HOUSE_PRICE}));}
+  else{if(S.home!=='villa')L.push(A('Live here','Move your things in · no rent',()=>{S.home='villa';S.homeDue=1e9;toast('Home','You moved into your duplex.','good');}));
+    else L.push(A('Your house','You live here · no rent',()=>toast('Home','Bwari Hills Duplex is yours.')));
+    L.push(A('Sell the house','The agent pays 80% of the price',()=>sellHouse()));}
+  return L;}
+/* the interior is the furnished self-contain (tier 2); the caretaker desk becomes the house papers */
+{const _sc=BUILD.selfcon;BUILD.selfcon=function(I,id){_sc(I,id);if(LOCS[id].own){const d=I.objs.find(o=>o.id==='caretaker');if(d){d.acts=()=>villaActs();}}};}
+HOOKS.acts.push(id=>id==='villa'?villaActs():[]);
+
+/* ---------- the garage ---------- */
+const garageG=new THREE.Group();outdoor.add(garageG);
+function garageRefresh(){while(garageG.children.length)garageG.remove(garageG.children[0]);const L=LOCS.garage;(S&&S.garage||[]).slice(0,3).forEach((c,i)=>{const g=makeCar(c.col,c.model==='jeep'?'suv':'sedan');
+  outdoor.remove(g);g.position.set(L.x-L.w/2+2+i*4,0,L.z+0.4);g.rotation.y=Math.PI;garageG.add(g);});}
+function stashCar(){const c=S.car;if(!c)return;S.garage=S.garage||[];carDyn(false);const keep=Object.assign({},c);delete keep.x;delete keep.z;delete keep.dir;S.garage.push(keep);S.car=null;buildMyCar();garageRefresh();}
+function takeCar(i){const g=S.garage||[];const c=g[i];if(!c)return;const L=LOCS.garage;g.splice(i,1);S.car=Object.assign({},c,{x:L.door.x,z:L.door.z-1,dir:Math.PI});buildMyCar();carDyn(true);garageRefresh();checkGoals();}
+function garageActs(){const L=[];if(!ownsHouse())return [A('Locked','The garage comes with Bwari Hills Duplex',()=>{},{dis:'Buy the duplex first'})];
+  const G2=S.garage||[];const near=S.car&&Math.hypot(S.car.x-LOCS.garage.x,S.car.z-LOCS.garage.z)<22;
+  if(S.car)L.push(A('Park '+S.car.n+' inside','Keep it safe in your garage',()=>{stashCar();toast('Garage','Parked inside. The door rolls down.','good');},{dis:near?(G2.length>=3?'The garage holds 3 cars':null):'Drive it here first'}));
+  G2.forEach((c,i)=>L.push(A('Take out '+c.n,'Fuel '+c.fuel.toFixed(1)+' L · condition '+Math.round(c.cond)+'%'+(S.car?' · swaps with your '+S.car.n:''),()=>{if(S.car)stashCar();const j=(S.garage||[]).indexOf(c);takeCar(j);toast('Garage','Your '+c.n+' is out and ready.','good');},{dis:S.car&&!near?'Bring your current car here first':null})));
+  if(!G2.length&&!S.car)L.push(A('Empty garage','Buy a car at Junction Autos',()=>{},{dis:'No cars yet'}));
+  return L;}
+HOOKS.acts.push(id=>id==='garage'?garageActs():[]);
+
+/* Junction Autos: with a garage you can own more than one car (your current one is delivered there) */
+{const _da=dealerActs;dealerActs=function(){if(!S.car||!ownsHouse())return _da();const cur=S.car;S.car=null;let L;try{L=_da();}finally{S.car=cur;}
+  if((S.garage||[]).length>=3)return _da();
+  return L.filter(a=>/^Buy /.test(a.label)).map(a=>Object.assign({},a,{info:a.info+' · your '+cur.n+' goes to your garage',fn:()=>{if(S.money<(a.cost||0))return a.fn();stashCar();a.fn();}})).concat(_da().filter(a=>!/^Buy |^Hire purchase/.test(a.label)));};}
+
+/* housing app: an owned house has no rent */
+{const _ha=housingApp;housingApp=function(b,btn,row){if(S.home&&LOCS[S.home]&&LOCS[S.home].own){b.append(el('div','bgcard','<b>Home: '+LOCS[S.home].name+'</b><div class="note">You own this house. No rent. Garage: '+((S.garage||[]).length)+' car'+((S.garage||[]).length===1?'':'s')+' inside.</div>'));
+  b.append(row(btn('Move back to the hostel',()=>{S.home=null;S.homeDue=0;toast('Moved out','You still own the duplex. Move back in any time.');})));return;}return _ha(b,btn,row);};}
+
+HOOKS.migrate.push(st=>{if(!st.garage)st.garage=[];});
+HOOKS.boot.push(()=>{try{garageRefresh();}catch(e){}});
+setTimeout(()=>{try{if(S)garageRefresh();}catch(e){}},1500);
+if(window.__QA)window.__HOME={villaActs,buyHouse,garageActs,stashCar,dealerActs:()=>dealerActs(),giveCar};
 /* ---- src/render.js ---- */
 /* Realistic rendering pass.
    - Sky dome: a real gradient sky with sun disc and glow, moon, stars and drifting fbm clouds whose cover follows the weather.

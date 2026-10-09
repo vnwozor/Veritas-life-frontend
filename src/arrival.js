@@ -11,10 +11,17 @@ async function arrivalCutscene(after){
   csStart();W.arrAfter=after;
   // the family car comes down Bwari road, through the gate, into the car park
   const car=buildVehicle('suv',pick([0x1b1b1b,0xc9ccd1,0x2b3a52,0x6b1d1d]),{plate:'ABJ '+ri(100,999)+' '+pick(['KW','GW','BW'])});
-  const V={x:70,z:135,dir:-Math.PI/2,i:0};car.g.position.set(V.x,0,V.z);car.g.rotation.y=V.dir;
-  const route1=[{x:4,z:135},{x:2,z:131},{x:2,z:96},{x:6,z:93},{x:spot.x-1,z:93},{x:spot.x,z:96.5},{x:spot.x,z:spot.z}];
+  const V={x:70,z:135+LANE,dir:-Math.PI/2,i:0};car.g.position.set(V.x,0,V.z);car.g.rotation.y=V.dir;
+  /* it keeps to the correct lane all the way (LANE: right-hand side of every road), like the traffic */
+  const route1=[{x:4,z:135+LANE},{x:-LANE,z:131},{x:-LANE,z:94},{x:3,z:90-LANE},{x:spot.x-3.5,z:90-LANE},{x:spot.x,z:93.5},{x:spot.x,z:97},{x:spot.x,z:spot.z}];
   player.visible=false;P.path=null;P.mode='idle';
-  let driving=true,steer=0;const carT=(dt)=>{if(!driving)return vehAnim(car,0,0,dt);const ox=V.x,oz=V.z;const before=V.dir;const done=stepAlong(V,route1,V.i>=5?3.2:9,dt);const d=Math.hypot(V.x-ox,V.z-oz);
+  let driving=true,steer=0;
+  /* the family car keeps to the traffic rules too: it waits behind (or for) any vehicle in front of it */
+  const ahead=()=>{const r=V.rd==null?V.dir:V.rd,fx=Math.sin(r),fz=Math.cos(r);for(const k of VEH){if(!k.g||!k.g.parent||!k.g.visible)continue;const q=k.g.position,dx=q.x-V.x,dz=q.z-V.z,al=dx*fx+dz*fz;if(al<=0.3||al>9)continue;if(Math.abs(dx*fz-dz*fx)<2.6)return k;}return null;};
+  const carT=(dt)=>{if(!driving)return vehAnim(car,0,0,dt);{const k=ahead();if(k){V.hold=(V.hold||0)+dt;
+      /* a car that won't clear the way (stuck head-on) is quietly sent elsewhere instead of being driven through */
+      if(V.hold>5&&k.mode==='ambient'){const far=NODES.filter(n=>Math.hypot(n.x-V.x,n.z-V.z)>90);const n=far.length?pick(far):null;if(n){k.x=n.x;k.z=n.z;k.path=null;k.i=0;k.g.position.set(n.x,0,n.z);}}
+      return vehAnim(car,0,steer,dt);}V.hold=0;}const ox=V.x,oz=V.z;const before=V.dir;const done=stepAlong(V,route1,V.i>=5?3.2:V.i>=4?6:9,dt);const d=Math.hypot(V.x-ox,V.z-oz);
     V.rd=V.rd==null?V.dir:V.rd+angDiff(V.dir,V.rd)*Math.min(1,dt*3.2);steer+=(clamp(angDiff(V.dir,V.rd)*1.4,-0.5,0.5)-steer)*Math.min(1,dt*5);
     car.g.position.set(V.x,0,V.z);car.g.rotation.y=V.rd;vehAnim(car,d,steer,dt);if(done){driving=false;}};
   CS.tick=carT;W.csCar=car;sfx('horn');
@@ -121,7 +128,7 @@ async function arrivalRoom(F){const I=getInt('boys');const g=intNav(I);const min
   await csWait(600);
   pl.face=me;await csSay(pl,'Settle in. Inspection is at night. Welcome to Veritas.',3000);csWalk(pl,{x:I.spawn.x,z:I.d/2-1.1},3);await csUntil(()=>csArrived(pl),6000);sfx('door');pl.g.visible=false;
   arrivalDone();}
-function arrivalDone(){const I=getInt('boys');csClear();CS.tick=null;if(W.csCar){if(W.csCar.g.parent)W.csCar.g.parent.remove(W.csCar.g);W.csCar=null;}
+function arrivalDone(){const I=getInt('boys');csClear();csDropAll();CS.tick=null;if(W.csCar){if(W.csCar.g.parent)W.csCar.g.parent.remove(W.csCar.g);W.csCar=null;}
   if(W.arrProps){W.arrProps.forEach(p=>{if(p.parent)p.parent.remove(p);});W.arrProps=null;}
   if(!S.inside){enterRoomForArrival();}
   P.x=I.spawn.x-0.4;P.z=I.spawn.z-1.6;P.dir=Math.PI;P.path=null;P.mode='idle';player.visible=true;player.position.set(P.x,0,P.z);

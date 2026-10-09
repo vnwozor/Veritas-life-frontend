@@ -86,7 +86,11 @@ function makeProp(kind){const g=new THREE.Group();
 /* ================= CUTSCENES ================= */
 const CS={on:false,skip:false,actors:[],bubbles:[],cam:null,camPos:new THREE.Vector3(),camAt:new THREE.Vector3(),focus:null};
 const SKIP={};
-function csEl(){if(W.csEl)return W.csEl;const d=el('div','cine','<div class="cbar top"></div><div class="cbar bot"></div><div class="ccap" hidden></div><button class="cskip">Skip ›</button>');$('#app').append(d);d.querySelector('.cskip').onclick=()=>{CS.skip=true;if(UI.dlg){UI.dlgQ=[];closeDlg();}};W.csEl=d;return d;}
+function csEl(){if(W.csEl)return W.csEl;const d=el('div','cine','<div class="cbar top"></div><div class="cbar bot"></div><div class="ccap" hidden></div><button class="cphone" aria-label="Phone">✉<i hidden></i></button><button class="cskip">Skip ›</button>');$('#app').append(d);d.querySelector('.cskip').onclick=()=>{CS.skip=true;if(UI.dlg){UI.dlgQ=[];closeDlg();}};
+  /* the phone stays usable during a scene: read and answer your messages, the scene carries on behind */
+  const ph=d.querySelector('.cphone');ph.onclick=()=>{if(UI.phone)closePhone();else openPhone('msgs');};
+  setInterval(()=>{if(!CS.on||!S)return;const n=(S.msgs||[]).filter(m=>!m.read).length+(S.groups||[]).reduce((a,g)=>a+(g.unread||0),0);const b=ph.querySelector('i');b.hidden=!n;b.textContent=n>9?'9+':n;},1000);
+  W.csEl=d;return d;}
 function csStart(){CS.on=true;CS.skip=false;CS.actors=[];document.body.classList.add('cine');const d=csEl();d.hidden=false;void d.offsetWidth;d.classList.add('on');if(ACT)stopAction(true);if(UI.sheet)closeSheet();if(UI.phone)closePhone();}
 function csEnd(){CS.on=false;document.body.classList.remove('cine');const d=csEl();d.classList.remove('on');setTimeout(()=>{if(!CS.on)d.hidden=true;},400);CS.bubbles.forEach(b=>b.e.remove());CS.bubbles=[];csCaption(null);CS.cam=null;W.camHold=null;}
 function csCaption(t,sub){const c=csEl().querySelector('.ccap');if(!t){c.hidden=true;return;}c.innerHTML='<b>'+fx(t)+'</b>'+(sub?'<span>'+fx(sub)+'</span>':'');c.hidden=false;c.classList.remove('go');void c.offsetWidth;c.classList.add('go');}
@@ -101,7 +105,7 @@ function csArrived(a){return !a.path||a.i>=a.path.length;}
 function csCarry(a,prop,how){if(a.carry){a.carry.parent&&a.carry.parent.remove(a.carry);a.carry=null;}a.carryHow=how||null;if(!prop)return;const J=a.g.userData.J;
   if(how==='head'){J.hd.add(prop);prop.position.set(0,0.31,0);prop.scale.setScalar(1/1.6);prop.rotation.set(0,Math.PI/2,0);}
   else if(how==='hand'){J.elR.add(prop);prop.position.set(0,-0.42,0.02);prop.scale.setScalar(1/1.6);prop.rotation.set(0,0,0);}
-  else{J.torso.add(prop);prop.position.set(0,0.1,0.26);prop.scale.setScalar(1/1.6*0.9);prop.rotation.set(0,0,0);}a.carry=prop;}
+  else{J.torso.add(prop);prop.position.set(0,0.1,0.26);prop.scale.setScalar(1/1.6*0.9);prop.rotation.set(0,0,0);}prop.userData.csProp=1;a.carry=prop;}
 function csSay(a,text,ms){const e=el('div','say3d',fx(text));$('#app').append(e);const b={e,a,until:performance.now()+(ms||3200)};CS.bubbles.forEach(x=>{if(x.a===a)x.until=0;});CS.bubbles.push(b);return csWait(Math.min(ms||3200,6000)*0.85).catch(e2=>{throw e2;});}
 function csShot(from,at,k){CS.cam={from,at,k:k||1.6};}
 /* a side-on shot of two people talking, framed in the top half so the dialog box doesn't cover them */
@@ -126,4 +130,6 @@ function csFrame(dt,now){if(!CS.on)return;dt*=(W.csSpeed||1);const t=now/1000;if
   const w=host.clientWidth,h=host.clientHeight;const nowp=performance.now();
   for(let i=CS.bubbles.length-1;i>=0;i--){const b=CS.bubbles[i];if(nowp>b.until){b.e.remove();CS.bubbles.splice(i,1);continue;}b.a.g.getWorldPosition(v3);v3.y+=4.4;v3.project(camera);
     if(v3.z>1){b.e.style.display='none';continue;}b.e.style.display='';b.e.style.transform='translate('+((v3.x+1)/2*w).toFixed(0)+'px,'+((1-v3.y)/2*h).toFixed(0)+'px) translate(-50%,-100%)';}}
-function csClear(){CS.actors.forEach(a=>{if(!a.keep&&a.g.parent&&a.g!==player)a.g.parent.remove(a.g);});CS.actors=[];}
+function csClear(){CS.actors.forEach(a=>{if(a.carry)csCarry(a,null);if(!a.keep&&a.g.parent&&a.g!==player)a.g.parent.remove(a.g);});CS.actors=[];}
+/* drop anything a cutscene left in the player's hands (a suitcase, a bucket...) */
+function csDropAll(){const J=player&&player.userData.J;if(!J)return;['torso','hd','elR','elL'].forEach(k=>{const j=J[k];if(!j)return;j.children.slice().forEach(c=>{if(c.userData&&c.userData.csProp)j.remove(c);});});}
