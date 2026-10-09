@@ -3,6 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "VERITAS LIFE online on Vercel: the game, the admin website and the game server (Vercel Functions + Upstash Redis).",
-  "engines": { "node": ">=20" },
-  "scripts": { "dev": "node dev-server.js" }
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node dev-server.js",
+    "vercel-build": "node deploy-build.js",
+    "build": "node build.js"
+  }
 }
