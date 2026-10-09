@@ -1,10 +1,12 @@
 {
   "cleanUrls": true,
   "rewrites": [
+    { "source": "/api/shop/:path*", "destination": "/api/korapay?p=:path*" },
     { "source": "/api/:path*", "destination": "/api?p=:path*" }
   ],
   "functions": {
-    "api/index.js": { "maxDuration": 30 }
+    "api/index.js": { "maxDuration": 30 },
+    "api/korapay.js": { "maxDuration": 30 }
   },
   "headers": [
     { "source": "/api/(.*)", "headers": [{ "key": "Cache-Control", "value": "no-store" }] }
