@@ -24,16 +24,41 @@ function hmParse(buf){const dv=new DataView(buf);if(dv.getUint32(0,true)!==0x314
 /* ---------- materials (shared; skinning on) ---------- */
 function hmMat(key,make){return HMS.mats[key]||(HMS.mats[key]=make());}
 function hmSkinMat(){return hmMat('skin',()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.52,metalness:0,skinning:true}));}
-function hmCloth(c,r,tex){const k='c'+c+'_'+r+(tex?'_t':'');return hmMat(k,()=>{const m=new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:0,skinning:true});
+/* fabric: a small tileable weave / knit / grain pattern, mapped in the garment's own rest-pose space (so it sticks to
+   the cloth while the body moves) with three planar projections; it tints the colour slightly and bumps the lighting */
+function hmFabTex(kind){const C=HMS.fab||(HMS.fab={});if(C[kind])return C[kind];const n=256,cv=document.createElement('canvas');cv.width=cv.height=n;const g=cv.getContext('2d'),im=g.createImageData(n,n);
+  let sd=kind.length*977+13;const R=()=>(sd=(sd*16807)%2147483647)/2147483647;const G=16,grid=new Float32Array(G*G).map(()=>R());
+  const vn=(u,v)=>{const x=u*G,y=v*G,i=Math.floor(x),j=Math.floor(y),fx=x-i,fy=y-j,a=grid[(j%G)*G+i%G],b=grid[(j%G)*G+(i+1)%G],c=grid[((j+1)%G)*G+i%G],d=grid[((j+1)%G)*G+(i+1)%G],sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy;};
+  const T=Math.PI*2;
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){const u=x/n,v=y/n,no=vn(u,v);let h;
+    if(kind==='twill')h=0.5+0.32*Math.sin(T*(u+v)*12)+0.08*Math.sin(T*u*48)+0.18*(no-0.5);
+    else if(kind==='knit')h=0.5+0.38*Math.abs(Math.sin(Math.PI*u*10))*(0.75+0.25*Math.sin(T*v*20))-0.15+0.15*(no-0.5);
+    else if(kind==='leather')h=0.55+0.35*(vn(u*3%1,v*3%1)-0.5)+0.2*(no-0.5);
+    else h=0.55+0.22*Math.sin(T*u*16+1.3*Math.sin(T*v*24))+0.12*Math.sin(T*v*24)+0.15*(no-0.5);
+    const b=Math.max(0,Math.min(255,h*255));const i=(y*n+x)*4;im.data[i]=im.data[i+1]=im.data[i+2]=b;im.data[i+3]=255;}
+  g.putImageData(im,0,0);const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;return C[kind]=t;}
+function hmFabric(m,kind){const sc={twill:0.75,knit:0.55,leather:0.9,cotton:0.6}[kind]||0.7,amt={twill:0.12,knit:0.1,leather:0.08,cotton:0.05}[kind]||0.08,bump={twill:0.5,knit:0.55,leather:0.35,cotton:0.22}[kind]||0.45;
+  m.extensions={derivatives:true};m.customProgramCacheKey=()=>'fab'+kind;
+  m.onBeforeCompile=sh=>{sh.uniforms.uFab={value:hmFabTex(kind)};sh.uniforms.uFabS={value:sc};sh.uniforms.uFabA={value:amt};sh.uniforms.uFabB={value:bump*0.0};
+    sh.vertexShader='varying vec3 vHmP;\nvarying vec3 vHmN;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvHmP=position;vHmN=normal;');
+    sh.fragmentShader='uniform sampler2D uFab;\nuniform float uFabS,uFabA,uFabB;\nvarying vec3 vHmP;\nvarying vec3 vHmN;\n'+sh.fragmentShader
+      .replace('#include <map_fragment>','#include <map_fragment>\nvec3 fw=pow(abs(normalize(vHmN)),vec3(4.0));fw/=(fw.x+fw.y+fw.z);vec3 fp=vHmP*uFabS;\nfloat fabH=texture2D(uFab,fp.yz).r*fw.x+texture2D(uFab,fp.xz).r*fw.y+texture2D(uFab,fp.xy).r*fw.z;\nfloat fabW=0.94+0.06*sin(vHmP.y*2.3+vHmP.x*1.7)*sin(vHmP.z*3.1);\ndiffuseColor.rgb*=mix(1.0-uFabA,1.0+uFabA*0.5,fabH)*fabW;')
+      .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=clamp(roughnessFactor*mix(1.06,0.92,fabH),0.0,1.0);')
+      .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\n{vec3 dpx=dFdx(-vViewPosition),dpy=dFdy(-vViewPosition);float dhx=dFdx(fabH),dhy=dFdy(fabH);vec3 r1=cross(dpy,normal),r2=cross(normal,dpx);float det=dot(dpx,r1);vec3 grd=sign(det)*(dhx*r1+dhy*r2);float fade=1.0-smoothstep(1.5,5.0,length(vViewPosition));normal=normalize(abs(det)*normal-grd*uFabB*fade);}');};
+  return m;}
+function hmCloth(c,r,tex,fab){const k='c'+c+'_'+r+(tex?'_t':'')+(fab?'_'+fab:'');return hmMat(k,()=>{const m=new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:0,skinning:true});if(fab)hmFabric(m,fab);
   if(tex){const src=ankaraM(c).map;m.map=src;m.color.setHex(0xffffff);}return m;});}
 /* photo skin and proxy textures (MakeHuman system assets, CC0) are applied when they arrive; until then the
    material shows the average skin colour, so nobody flashes white or black */
 const HM_SKINREF=0x573828;
 function hmTex(file,cb){const L=HMS.texL||(HMS.texL={});if(L[file]){if(L[file].t)cb(L[file].t);else L[file].q.push(cb);return;}
   const e=L[file]={t:null,q:[cb]};new THREE.TextureLoader().load((HMS.base||'/vendor/hm/')+file,t=>{t.encoding=THREE.sRGBEncoding;t.anisotropy=4;e.t=t;e.q.forEach(f=>{try{f(t);}catch(x){}});e.q=[];},undefined,()=>{});}
-function hmSkinTexMat(f){return hmMat('skinT'+(f?'f':'m'),()=>{const m=new THREE.MeshStandardMaterial({vertexColors:true,color:HM_SKINREF,roughness:0.5,metalness:0,skinning:true});
-  hmTex(f?'skin_f.jpg':'skin_m.jpg',t=>{m.map=t;m.color.setHex(0xffffff);m.needsUpdate=true;});return m;});}
-function hmProxyMat(file,tint){return hmMat('px'+file+'_'+tint,()=>{const m=new THREE.MeshStandardMaterial({color:tint,roughness:0.75,metalness:0,skinning:true,side:THREE.DoubleSide,alphaTest:0.45,transparent:false});
+function hmSkinTexMat(f){return hmMat('skinT'+(f?'f':'m'),()=>{const m=new THREE.MeshStandardMaterial({vertexColors:true,color:HM_SKINREF,roughness:0.5,metalness:0,skinning:true,morphTargets:true});
+  hmTex(f?'skin_f.jpg':'skin_m.jpg',t=>{m.map=t;m.color.setHex(0xffffff);m.needsUpdate=true;});
+  /* skin is not plastic: light scatters under it (warmer, softer shadows) and it shows a faint sheen at grazing angles */
+  m.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <lights_fragment_end>','#include <lights_fragment_end>\n{vec3 vd=normalize(vViewPosition);float fr=pow(1.0-clamp(dot(normal,vd),0.0,1.0),3.0);reflectedLight.indirectDiffuse+=diffuseColor.rgb*vec3(0.16,0.07,0.05);reflectedLight.indirectSpecular+=vec3(0.035,0.03,0.028)*fr;}');};
+  m.customProgramCacheKey=()=>'hmskin';return m;});}
+function hmProxyMat(file,tint,morph){return hmMat('px'+file+'_'+tint+(morph?'_m':''),()=>{const m=new THREE.MeshStandardMaterial({color:tint,roughness:0.75,metalness:0,skinning:true,side:THREE.DoubleSide,alphaTest:0.45,transparent:false,morphTargets:!!morph});
   m.visible=false;hmTex(file,t=>{m.map=t;m.visible=true;m.needsUpdate=true;});return m;});}
 function hmEyeMat(){return hmMat('eye',()=>new THREE.MeshStandardMaterial({map:HMS.eyeTex,roughness:0.18,metalness:0,skinning:true,alphaTest:0.5}));}
 
@@ -50,6 +75,17 @@ function hmSpec(o,seed){const r=n=>{const x=Math.sin(seed*91.7+n*12.9898)*43758.
     shirt:o.shirt!=null?o.shirt:0xdddddd,ankara:o.top==='ankara'||o.top==='kaftanA',pants:o.pants!=null?o.pants:0x23262e,
     skirt:!!o.skirt||o.top==='dress'||o.cassock||o.habit,dress:o.top==='dress',robe:!!(o.cassock||o.habit||o.top==='kaftan'||o.top==='kaftanA'),
     glasses:!!o.glasses,shoes:o.shoes||0x1d1a18,shoeStyle:o.shoeStyle||'shoes',hairStyle:o.hairStyle||(f?'puff':'low'),hairC:o.hairC||0x161010,hijab:o.hijab,mask:!!o.mask};}
+
+/* ---------- facial expression morphs (shared by everyone: one GPU copy per target) ---------- */
+const HM_EXPR=['x_blinkL','x_blinkR','x_smile','x_open','x_frown','x_browUp','x_browDn'];
+function hmBaseDelta(k){const C=HMS.mbase||(HMS.mbase={});if(C[k]!==undefined)return C[k];const D=HMS.d,ii=D['t_'+k+'_i'],dd=D['t_'+k+'_d'];if(!ii)return C[k]=null;
+  const a=new Float32Array(D.pos.length);for(let j=0;j<ii.length;j++){a[ii[j]*3]=dd[j*3]/4000;a[ii[j]*3+1]=dd[j*3+1]/4000;a[ii[j]*3+2]=dd[j*3+2]/4000;}return C[k]=a;}
+/* morph attributes for a mesh whose vertex k sits on base vertex map(k) (body) or on a weighted triangle of base vertices (proxies) */
+function hmMorphs(tag,n,fill){const C=HMS.mcache||(HMS.mcache={});if(C[tag])return C[tag];const out=[];
+  for(const k of HM_EXPR){const B=hmBaseDelta(k);if(!B)return C[tag]=null;const a=new Float32Array(n*3);fill(B,a);const at=new THREE.BufferAttribute(a,3);at.name=k;out.push(at);}return C[tag]=out;}
+function hmBodyMorphs(){const D=HMS.d,vid=D.bodyVid;return hmMorphs('body',vid.length,(B,a)=>{for(let k=0;k<vid.length;k++){const i=vid[k]*3;a[k*3]=B[i];a[k*3+1]=B[i+1];a[k*3+2]=B[i+2];}});}
+function hmProxyMorphs(name){const ref=HMS.d[name+'Ref'];if(!ref)return null;const n=ref.length/9;return hmMorphs(name,n,(B,a)=>{for(let k=0;k<n;k++){const r=ref.subarray(k*9,k*9+9);for(let c=0;c<3;c++)a[k*3+c]=B[r[0]*3+c]*r[3]+B[r[1]*3+c]*r[4]+B[r[2]*3+c]*r[5];}});}
+const withMorphs=(g,M)=>{if(!M)return;g.morphAttributes.position=M;g.morphTargetsRelative=true;};
 
 /* ---------- build one human ---------- */
 const _v1=new THREE.Vector3(),_v2=new THREE.Vector3();
@@ -78,7 +114,7 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   const mk=(pos,idx,J,Wt,extra)=>{const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setIndex(new THREE.BufferAttribute(idx,1));
     geo.setAttribute('skinIndex',new THREE.BufferAttribute(J,4));geo.setAttribute('skinWeight',new THREE.BufferAttribute(Wt,4,true));if(extra)extra(geo);return geo;};
   const skinned=(geo,mat,shadow=true)=>{const m=new THREE.SkinnedMesh(geo,mat);m.castShadow=shadow&&(typeof QH==='undefined'||QH);m.receiveShadow=true;g0.add(m);m.bind(skel);return m;};
-  const R=H.reg,meshes=[];const sstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
+  const R=H.reg,meshes=[],face={};const sstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
   /* ---- clothing / hair are cut from skin-tight shells by smooth scalar fields s (>0 = covered, in dm) ---- */
   const dist=(a,b)=>X[a].distanceTo(X[b]),Lg={uarm:(dist('uarmL','farmL')+dist('uarmR','farmR'))/2,farm:(dist('farmL','handL')+dist('farmR','handR'))/2,thigh:(dist('thighL','shinL')+dist('thighR','shinR'))/2,shin:(dist('shinL','footL')+dist('shinR','footR'))/2};
   const waist=X.spine.y,waistTop=waist+0.42,eyeY=(X.eyeL.y+X.eyeR.y)/2,eyeZ=(X.eyeL.z+X.eyeR.z)/2,hcx=(X.eyeL.x+X.eyeR.x)/2,hcz=eyeZ-0.95;
@@ -129,8 +165,8 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
         let m=1;const y=bpos[i*3+1];{const x=bpos[i*3],z=bpos[i*3+2];for(const E of [X.eyeL,X.eyeR]){const d=Math.hypot(x-E.x,(y-E.y)*1.6,z-E.z);if(d<0.3&&z>E.z-0.05)m*=0.75+0.25*sstep(0.15,0.3,d);}}
         sc[k*3]=tr*m;sc[k*3+1]=tg*m;sc[k*3+2]=tb*m;}
       const si=[],S2=D.bodyIdxS;for(let k=0;k<S2.length;k+=3){const a=S2[k],b=S2[k+1],c=S2[k+2];if(hd[vid[a]]&&hd[vid[b]]&&hd[vid[c]])continue;si.push(a,b,c);}
-      const geo=mk(sp,Uint16Array.from(si),sj,sw,g=>{g.setAttribute('color',new THREE.BufferAttribute(sc,3));g.setAttribute('normal',new THREE.BufferAttribute(sn,3));g.setAttribute('uv',new THREE.BufferAttribute(D.bodyUV,2));});
-      meshes.push(skinned(geo,hmSkinTexMat(f)));}
+      const geo=mk(sp,Uint16Array.from(si),sj,sw,g=>{g.setAttribute('color',new THREE.BufferAttribute(sc,3));g.setAttribute('normal',new THREE.BufferAttribute(sn,3));g.setAttribute('uv',new THREE.BufferAttribute(D.bodyUV,2));withMorphs(g,hmBodyMorphs());});
+      const bm=skinned(geo,hmSkinTexMat(f));meshes.push(bm);face.body=bm;}
     else{const geo=mk(bpos,Uint16Array.from(idx),D.bodyJ,D.bodyW,g=>{g.setAttribute('color',new THREE.BufferAttribute(col,3));g.setAttribute('normal',bfull.getAttribute('normal'));});
     meshes.push(skinned(geo,hmSkinMat()));}}
   /* helper pools (subdivided once) */
@@ -140,14 +176,14 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
     let J=D[name+'J'],Wt=D[name+'W'];if(near&&name!=='hair'){/* move exactly like the skin underneath */J=new Uint8Array(n*4);Wt=new Uint8Array(n*4);for(let k=0;k<n;k++)for(let c=0;c<4;c++){J[k*4+c]=D.bodyJ[near[k]*4+c];Wt[k*4+c]=D.bodyW[near[k]*4+c];}}
     const geo=mk(pos,D[name+'Idx'],J,Wt);geo.computeVertexNormals();return{n,pos,nor:geo.getAttribute('normal').array,reg:D[name+'Reg'],t:D[name+'T'],idx:D[name+'Idx'],J,W:Wt};};
   const tg=pool('tights');let tuv=null;if(spec.ankara){tuv=new Float32Array(tg.n*2);for(let k=0;k<tg.n;k++){tuv[k*2]=(Math.atan2(tg.pos[k*3],tg.pos[k*3+2])/Math.PI+1)*2;tuv[k*2+1]=tg.pos[k*3+1]*0.32;}}
-  const topOff=spec.top==='hoodie'?0.15:0.075,TOPM=hmCloth(spec.shirt,0.88,spec.ankara),BOTM=hmCloth(spec.pants,0.86);
+  const topOff=spec.top==='hoodie'?0.15:0.075,TOPM=hmCloth(spec.shirt,0.88,spec.ankara,spec.top==='hoodie'?'knit':'cotton'),BOTM=hmCloth(spec.pants,0.86,false,'twill');
   if(window.__HMDBG)HMS.dbg={tg,sT:field(tg,topS),R,X,clavY,nkx,nkz,R0};
   clip(tg,field(tg,topS),topOff,TOPM,tuv);
   if(!spec.dress&&!(spec.skirt&&!spec.robe))clip(tg,field(tg,botS),0.045,BOTM);
-  clip(tg,field(tg,shoeS),spec.shoeStyle==='sneakers'?0.065:spec.shoeStyle==='slides'?0.03:0.045,hmCloth(spec.shoes,spec.shoeStyle==='sneakers'?0.7:0.4));
+  clip(tg,field(tg,shoeS),spec.shoeStyle==='sneakers'?0.065:spec.shoeStyle==='slides'?0.03:0.045,hmCloth(spec.shoes,spec.shoeStyle==='sneakers'?0.7:0.4,false,spec.shoeStyle==='sneakers'?'knit':'leather'));
   if(spec.skirt){const sk=pool('skirt');clip(sk,field(sk,(r,t,x,y,z)=>Math.min(y-skirtCut,(spec.dress||spec.robe?waistTop+0.15:waist+0.3)-y)),0.035,spec.dress||spec.robe?TOPM:BOTM,spec.ankara?(()=>{const u=new Float32Array(sk.n*2);for(let k=0;k<sk.n;k++){u[k*2]=(Math.atan2(sk.pos[k*3],sk.pos[k*3+2])/Math.PI+1)*2;u[k*2+1]=sk.pos[k*3+1]*0.32;}return u;})():null);}
   /* hair: a shell over the scalp with a smooth hairline */
-  const pxHair=spec.hijab||spec.mask?null:({afro:'afro01',natural:'afro01',braids:'braid01',ponytail:'ponytail01',bob:'bob01'})[spec.hairStyle]||null,pxOK=pxHair&&D['px_'+pxHair+'Ref'];
+  const pxHair=spec.hijab||spec.mask?null:({afro:'afro01',natural:'afro01',braids:'braid01',ponytail:'ponytail01',bob:'bob01',waves:'short02'})[spec.hairStyle]||null,pxOK=pxHair&&D['px_'+pxHair+'Ref'];
   const hs=pxOK?'low':spec.hairStyle;if(hs!=='bald'&&!spec.hijab&&!spec.mask){const th={low:0.045,waves:0.06,highfade:0.1,twists:0.24,locs:0.22,cornrows:0.06,braids:0.08,afro:0.75,natural:0.45,puff:0.07,bun:0.07,bob:0.12,ponytail:0.07}[hs]||0.06;
     const HM=hmMat('h'+spec.hairC,()=>new THREE.MeshStandardMaterial({color:spec.hairC,roughness:0.78,metalness:0,skinning:true}));const topY=X.headTop.y;
     clip(body,field(body,hairS),(i,s)=>{let o=0.012+th*sstep(0,hs==='afro'||hs==='natural'?0.7:0.22,s);if(hs==='highfade')o*=sstep(topY-1.5,topY-0.35,body.pos[i*3+1])*0.85+0.15;
@@ -157,18 +193,18 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   /* hijab: wraps the head, leaves the face open, drapes over the shoulders */
   if(spec.hijab){const fy=eyeY-0.25;const hjS=(r,t,x,y,z)=>{if(r===R.head||r===R.neck){if(z<eyeZ-0.75)return 0.6;return (Math.hypot((x-hcx)/0.6,(y-fy)/(y>fy?0.82:0.98))-1)*0.5;}
       if(r===R.torsoU||r===R.uarm||r===R.torsoL)return y-(clavY-(z<nkz?1.2:0.75));return -1;};
-    clip(body,field(body,hjS),(i,s)=>0.14+(body.reg[i]===R.head?0.1:0.24)*sstep(0,0.5,s),hmCloth(spec.hijab,0.9));}
+    clip(body,field(body,hjS),(i,s)=>0.14+(body.reg[i]===R.head?0.1:0.24)*sstep(0,0.5,s),hmCloth(spec.hijab,0.9,false,'cotton'));}
   /* balaclava */
   if(spec.mask){const mkS=(r,t,x,y,z)=>r===R.head||r===R.neck?Math.max(Math.abs(y-eyeY)-0.2,(eyeZ-0.55)-z):(r===R.torsoU?y-clavY:-1);
-    clip(body,field(body,mkS),0.04,hmCloth(0x141414,0.95));}
+    clip(body,field(body,mkS),0.04,hmCloth(0x141414,0.95,false,'knit'));}
   /* fitted proxies (hair styles, eyebrows, eyelashes) */
   const proxy=(name,mat,shadow)=>{const ref=D[name+'Ref'],sc=H.proxies&&H.proxies[name];if(!ref||!sc)return null;const n=ref.length/9,pos=new Float32Array(n*3);
     const ax=(q,c)=>q?Math.abs(P[q[0]*3+c]-P[q[1]*3+c])/q[2]:1,sx=ax(sc.x,0),sy=ax(sc.y,1),sz=ax(sc.z,2);
     for(let k=0;k<n;k++){const r=ref.subarray(k*9,k*9+9);for(let a=0;a<3;a++)pos[k*3+a]=P[r[0]*3+a]*r[3]+P[r[1]*3+a]*r[4]+P[r[2]*3+a]*r[5]+r[6+a]*[sx,sy,sz][a];}
-    const geo=mk(pos,D[name+'Idx'],D[name+'J'],D[name+'W'],g=>g.setAttribute('uv',new THREE.BufferAttribute(D[name+'UV'],2)));geo.computeVertexNormals();const m=skinned(geo,mat,shadow);meshes.push(m);return m;};
+    const geo=mk(pos,D[name+'Idx'],D[name+'J'],D[name+'W'],g=>{g.setAttribute('uv',new THREE.BufferAttribute(D[name+'UV'],2));if(mat.morphTargets)withMorphs(g,hmProxyMorphs(name));});geo.computeVertexNormals();const m=skinned(geo,mat,shadow);meshes.push(m);return m;};
   const hairTint=new THREE.Color(spec.hairC).lerp(_c1.setHex(0x3a2a20),0.35).multiplyScalar(2.2).getHex();
-  if(!spec.mask)proxy('px_brow',hmProxyMat('brow.png',0x9a8a80),false);
-  proxy('px_lash',hmProxyMat('lash.png',0xffffff),false);
+  if(!spec.mask)face.brow=proxy('px_brow',hmProxyMat('brow.png',0x9a8a80,true),false);
+  face.lash=proxy('px_lash',hmProxyMat('lash.png',0xffffff,true),false);
   if(pxOK)proxy('px_'+pxHair,hmProxyMat('hair_'+pxHair+'.png',hairTint),true);
   /* eyes */
   {const ref=D.eyeRef,n=ref.length/9,pos=new Float32Array(n*3),sc=H.eyeScale,V3=i=>[P[i*3],P[i*3+1],P[i*3+2]];
@@ -185,7 +221,7 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   const C={};['L','R'].forEach(s=>{const sg=side(s),T=new THREE.Vector3(sg,0,0);C['uarm'+s]=new THREE.Quaternion().setFromUnitVectors(_v1.copy(X['farm'+s]).sub(X['uarm'+s]).normalize(),T);
     C['farm'+s]=new THREE.Quaternion().setFromUnitVectors(_v1.copy(X['hand'+s]).sub(X['farm'+s]).normalize(),T);C['hand'+s]=C['farm'+s];});
   HMS.stats.built++;HMS.stats.ms=performance.now()-t0;
-  return{g:g0,bones:bn,skel,N,X,C,meshes};}
+  return{g:g0,bones:bn,skel,N,X,C,meshes,face};}
 const _c1=new THREE.Color(),_c2=new THREE.Color();
 
 /* ---------- attach to a sim: line the procedural joints up with the real skeleton ---------- */
@@ -216,6 +252,22 @@ function hmDetach(s){const ud=s.userData,H=ud.hm;if(!H)return;hmShow(s,false);H.
 
 /* ---------- pose transfer (called from pose()) ---------- */
 const _q1=new THREE.Quaternion(),_q2=new THREE.Quaternion(),HQ=[...Array(96)].map(()=>new THREE.Quaternion()),HQI=new THREE.Quaternion(),HE=new THREE.Euler(),_hv=new THREE.Vector3(),_ax=new THREE.Vector3(1,0,0);
+/* face: blinking, smiles, frowns, raised brows and lip shapes, driven by what the person is doing */
+const HM_HAPPY=/laugh|wave|dance|excited|celebrate|cheer|hug|selfie/,HM_SAD=/sad|cry|hungry|sick|tired|beg|kneel/;
+function hmFace(ud,H,dt){const F=H.face;if(!F||!F.body||!F.body.morphTargetInfluences)return;const st=ud.hmF||(ud.hmF={t:0,next:1+Math.random()*3,bl:0,v:[0,0,0,0,0,0,0],brow:0,browT:0});
+  const k=ud.pk||'',tt=ud.pt||0;st.t+=dt;
+  /* blink every 2-6 s (a quick 0.16 s close); eyes shut while asleep */
+  let blink=0;if(/lie|sleep/.test(k))blink=1;else{if(st.t>st.next){st.bl=0.0001;st.next=st.t+2+Math.random()*4;}if(st.bl>0){st.bl+=dt;blink=Math.sin(Math.min(1,st.bl/0.16)*Math.PI);if(st.bl>0.16)st.bl=0;}}
+  const talking=/talk|phone/.test(k)||ud.speaking;
+  let smile=0.1,frown=0,open=0,browUp=0,browDn=0;
+  if(HM_HAPPY.test(k))smile=0.85;else if(HM_SAD.test(k)){frown=0.6;browDn=0.3;smile=0;}
+  else if(talking){smile=0.25+0.15*Math.sin(tt*0.7);open=Math.max(0,0.06+0.16*Math.sin(tt*11.3)*Math.sin(tt*2.9+1));
+    if(st.t>st.browT){st.brow=Math.random()<0.45?0.6:0;st.browT=st.t+0.6+Math.random()*1.4;}browUp=st.brow;}
+  else if(/shoot|fight|angry|guard/.test(k)){browDn=0.7;smile=0;}
+  if(k==='laugh')open=0.12+0.08*Math.abs(Math.sin(tt*6));
+  const want=[blink,blink,smile,open,frown,browUp,browDn],v=st.v,r=Math.min(1,dt*10);
+  for(let i=0;i<7;i++)v[i]+=(want[i]-v[i])*(i<2?1:r);
+  [F.body,F.brow,F.lash].forEach(m=>{if(m&&m.morphTargetInfluences)for(let i=0;i<7;i++)m.morphTargetInfluences[i]=v[i];});}
 function hmPose(s,dt){const ud=s.userData,H=ud.hm;if(!H||!ud.hmOn)return;dt=dt||0.016;const J=ud.J,b=H.bones,N=H.N,W={};let qi=0;const q=()=>HQ[qi++].identity();
   const qT=q().setFromEuler(J.torso.rotation),qHl=q().setFromEuler(J.hd.rotation);
   /* look at someone: the head (and a little of the neck) turns toward ud.lookAt */
@@ -229,6 +281,7 @@ function hmPose(s,dt){const ud=s.userData,H=ud.hm;if(!H||!ud.hmOn)return;dt=dt||
   /* lips: the jaw moves while talking or laughing */
   {const k=ud.pk||'',tt=ud.pt||0;let open=0;if(/talk/.test(k)||ud.speaking)open=Math.max(0,0.06+0.09*Math.sin(tt*9.3)*Math.sin(tt*3.1+1));else if(k==='laugh')open=0.12+0.06*Math.abs(Math.sin(tt*6));else if(k==='yawn')open=0.32;
     ud.jawO=(ud.jawO||0)+(open-(ud.jawO||0))*Math.min(1,dt*14);W.jaw=ud.jawO>0.004?q().copy(W.head).multiply(q().setFromAxisAngle(_ax,ud.jawO)):W.head;}
+  hmFace(ud,H,dt);
   for(const ps of ['L','R']){const k=H.map[ps];const qS=q().copy(qT).multiply(q().setFromEuler(J['sh'+ps].rotation));const qE=q().copy(qS).multiply(q().setFromEuler(J['el'+ps].rotation));
     W['clav'+k]=q().copy(qT).multiply(q().slerp(q().setFromEuler(J['sh'+ps].rotation),0.12));
     W['uarm'+k]=q().copy(qS).multiply(N['uarm'+k]);W['farm'+k]=q().copy(qE).multiply(N['farm'+k]);W['hand'+k]=W['farm'+k];

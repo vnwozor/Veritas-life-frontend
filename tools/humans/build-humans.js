@@ -138,7 +138,7 @@ function proxy(name,dir,file,headOnly){const objF=path.join(dir,file+'.obj'),clo
     for(let i=1;i<vv.length-1;i++)idx.push(vv[0],vv[i],vv[i+1]);});
   put(name+'Ref',Float32Array.from(ref));put(name+'UV',Float32Array.from(uv));put(name+'Idx',Uint16Array.from(idx));put(name+'J',Uint8Array.from(J));put(name+'W',Uint8Array.from(W));
   hdr.proxies[name]=sc;console.log('proxy',name,ref.length/9,'verts',idx.length/3,'tris');}
-{const A=process.argv[4];if(A){for(const h of ['afro01','braid01','ponytail01','bob01'])proxy('px_'+h,path.join(A,'hair',h),h,true);
+{const A=process.argv[4];if(A){for(const h of ['afro01','braid01','ponytail01','bob01','short02'])proxy('px_'+h,path.join(A,'hair',h),h,true);
   proxy('px_brow',path.join(A,'eyebrows','eyebrow001'),'eyebrow001');proxy('px_lash',path.join(A,'eyelashes','eyelashes01'),'eyelashes01');}}
 
 /* morph targets (sparse, int16 at 1/4000 dm) */
@@ -154,9 +154,13 @@ const T={am:'macrodetails/african-male-young',af:'macrodetails/african-female-yo
   lipl:'mouth/mouth-lowerlip-volume-incr',lipu:'mouth/mouth-upperlip-volume-incr',mwide:'mouth/mouth-scale-horiz-incr',mnarrow:'mouth/mouth-scale-horiz-decr',
   chinw1:'chin/chin-width-incr',chinw0:'chin/chin-width-decr',chinp1:'chin/chin-prominent-incr',chinp0:'chin/chin-prominent-decr',
   cheekL:'cheek/l-cheek-volume-incr',cheekR:'cheek/r-cheek-volume-incr',eyeL1:'eyes/l-eye-scale-incr',eyeR1:'eyes/r-eye-scale-incr',eyeL0:'eyes/l-eye-scale-decr',eyeR0:'eyes/r-eye-scale-decr'};
+/* facial expression units (MakeHuman CC0, African set): used live for blinking, smiles, frowns, raised brows, mouth */
+{const X='expression/units/african/';Object.assign(T,{x_blinkL:X+'eye-left-closure',x_blinkR:X+'eye-right-closure',x_smile:X+'mouth-corner-puller',x_open:X+'mouth-open',x_frown:X+'mouth-depression',
+  x_browUp:[X+'eyebrows-left-up',X+'eyebrows-right-up'],x_browDn:[X+'eyebrows-left-down',X+'eyebrows-right-down']});}
 hdr.targets={};
-for(const k in T){const f=path.join(D,'targets',T[k]+'.target');if(!fs.existsSync(f)){console.log('missing',f);continue;}
-  const ii=[],dd=[];for(const l of fs.readFileSync(f,'utf8').split('\n')){if(!l||l[0]==='#')continue;const p=l.trim().split(/\s+/).map(Number);if(p.length<4)continue;ii.push(p[0]);dd.push(...p.slice(1,4).map(x=>Math.max(-32767,Math.min(32767,Math.round(x*4000)))));}
+for(const k in T){const files=(Array.isArray(T[k])?T[k]:[T[k]]).map(t=>path.join(D,'targets',t+'.target'));if(files.some(f=>!fs.existsSync(f))){console.log('missing',files);continue;}
+  const acc=new Map();for(const f of files)for(const l of fs.readFileSync(f,'utf8').split('\n')){if(!l||l[0]==='#')continue;const p=l.trim().split(/\s+/).map(Number);if(p.length<4)continue;const a=acc.get(p[0])||[0,0,0];a[0]+=p[1];a[1]+=p[2];a[2]+=p[3];acc.set(p[0],a);}
+  const ii=[],dd=[];for(const [i,a] of acc){ii.push(i);dd.push(...a.map(x=>Math.max(-32767,Math.min(32767,Math.round(x*4000)))));}
   put('t_'+k+'_i',Uint16Array.from(ii));put('t_'+k+'_d',Int16Array.from(dd));hdr.targets[k]=ii.length;}
 
 hdr.bones=KB;hdr.parents=KB.map(b=>PAR[b]?KB.indexOf(PAR[b]):-1);hdr.extra=Object.keys(EXTRA);hdr.nBody=NB;hdr.waistY=waistY;hdr.reg=REG;

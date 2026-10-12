@@ -34,3 +34,13 @@
 .netlbl span{color:#9fd0ef;font-size:10px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good,#5cbf7f)}
 .acctbox{display:grid;gap:8px}.acctbox .gname{font-size:15px}
+.vl-ids{display:block;color:var(--muted,#9fb3a8);font-size:12.5px;margin-top:2px}
+.vl-rel{display:inline-block;margin:6px auto 2px;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:rgba(255,255,255,.08);color:#cfd8d2}
+.vl-rel.taken{background:rgba(214,64,110,.18);color:#ff8fb2}
+.vl-findrow{display:flex;gap:8px;align-items:center}
+.vl-findrow input{flex:1;min-width:0}
+.vl-findrow button{flex:none;padding:10px 16px;border-radius:10px;font-weight:800;background:var(--gold,#e3b04b);color:#1b1406;border:0}
+.vl-find{border:1px solid rgba(227,176,75,.35);border-radius:12px;padding:10px;display:grid;gap:8px;margin-bottom:6px}
+.vl-amts{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.vl-amts button{padding:7px 10px;border-radius:16px;font-size:12.5px}
+.psend{background:var(--good,#3fa66b)!important;color:#fff!important;font-weight:800;padding:12px!important}

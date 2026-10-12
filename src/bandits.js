@@ -1,5 +1,5 @@
 /* ================= BANDITS: the raid, the kidnapping, the camp, the release =================
-   Armed men come through the broken fence at night in two pickups. If they take you, you see it:
+   Armed men come through the back fence at night in two pickups. If they take you, you see it:
    dragged to the trucks with other students, driven into the bush, held at a camp until the ransom
    is paid (by family, friends, other players or a top-up) or you escape. Kidnapped players can see
    each other at the camp. */
@@ -17,7 +17,7 @@ HOOKS.raid=forced=>{if(CS.on)return;if(UI.dlg){UI.dlgQ=[];UI.dlg=false;$('#dlgWr
 async function raidScene(){const hostel=LOCS[homeId()]&&LOCS[homeId()].zone!=='off'?LOCS.boys:LOCS.boys;const wasInside=S.inside;
   csStart();document.body.classList.add('raid');setTimeout(()=>document.body.classList.remove('raid'),12000);setCarLights(true);
   if(S.inside){const id=S.inside;await new Promise(r=>fadeThen(()=>{const I=getInt(id);I.g.visible=false;outdoor.visible=true;outdoor.add(player);player.visible=false;S.raidFrom=id;S.inside=null;scene.fog.near=170;scene.fog.far=430;r();}));}
-  // two pickups outside the broken fence
+  // two pickups outside the back fence
   const trucks=[buildVehicle('pickup',0x2a2a26),buildVehicle('pickup',0x3a3226)];trucks.forEach((V,i)=>{V.g.position.set(-88+i*6,0,120+i*2);V.g.rotation.y=Math.PI;});W.raidTrucks=trucks;
   const B=[];for(let i=0;i<6;i++)B.push(bandit(-85+rnd(-1,1),110+i*0.8));W.raidB=B;
   const fenceIn={x:-85,z:101.2};const targets=[hostel.door,{x:hostel.door.x+4,z:hostel.door.z+8},{x:-60,z:78},{x:-40,z:86},{x:-70,z:90},{x:hostel.door.x+2,z:hostel.door.z-6}];
@@ -58,7 +58,7 @@ async function captureScene(){csStart();setCarLights(true);const room=S.inside;
   const gs=[bandit(fp.x-1.4,fp.z-1.2),bandit(fp.x+2.5,fp.z+2.2),bandit(fp.x,fp.z+3.2)];gs.forEach(a=>a.sp=3.9);
   const fenceIn={x:-85,z:101.2};const route=navPath(fp,fenceIn)||[fenceIn];const tail=[{x:-85,z:104.8},{x:-85,z:109}];
   [me,...caps,...gs].forEach((a,i)=>{a.path=route.concat(tail).map(p=>({x:p.x+(i%3-1)*0.8,z:p.z+Math.floor(i/3)*0.9}));a.i=0;});
-  csShot(()=>new THREE.Vector3(me.x+8,6.5,me.z-9),()=>new THREE.Vector3(me.x,1.4,me.z+2),1.5);CS.camInit=false;csCaption('Taken','They march you towards the broken fence');
+  csShot(()=>new THREE.Vector3(me.x+8,6.5,me.z-9),()=>new THREE.Vector3(me.x,1.4,me.z+2),1.5);CS.camInit=false;csCaption('Taken','They march you towards the back fence');
   const shots=setInterval(()=>{if(!CS.on){clearInterval(shots);return;}gunshot(pick(gs));},2200);
   await csUntil(()=>csArrived(me),26000);clearInterval(shots);csCaption(null);
   // into the back of the pickup

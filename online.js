@@ -39,14 +39,14 @@
         <p class="vlg-sub">Online · play as a student at Veritas, Bwari</p>
         <div class="vlg-tabs"><button type="button" data-m="in" class="on">Log in</button><button type="button" data-m="up">Create account</button></div>
         <form autocomplete="on" novalidate>
-          <div class="vlg-f" data-for="in"><label>Matric number or email</label><input name="ident" placeholder="VUG/26/1234 or you@email.com" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="120"></div>
+          <div class="vlg-f" data-for="in"><label>Matric number, username or email</label><input name="ident" placeholder="VUG/26/1001, @username or email" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="120"></div>
           <div class="vlg-f" data-for="up"><label>Full name</label><input name="fullname" placeholder="First name and surname" autocomplete="name" maxlength="60"></div>
           <div class="vlg-f" data-for="up"><label>Email</label><input name="email" type="email" placeholder="you@email.com" autocomplete="email" autocapitalize="off" maxlength="120"></div>
-          <div class="vlg-f" data-for="up"><label>Matric number</label><div class="vlg-matric"><span>VUG/26/</span><input name="matric" placeholder="1234" inputmode="text" maxlength="24" autocomplete="off"></div></div>
+          <div class="vlg-f" data-for="up"><label>Username</label><div class="vlg-matric"><span>@</span><input name="username" placeholder="e.g. victor_n" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false"></div><p class="vlg-help" style="margin:4px 0 0">Your matric number is given to you automatically when you create the account.</p></div>
           <div class="vlg-f vlg-row" data-for="up"><div><label>Department</label><select name="dept">${deptOpts}</select></div><div class="vlg-age"><label>Age</label><input name="age" type="number" inputmode="numeric" min="15" max="70" placeholder="18"></div></div>
           <div class="vlg-f" data-for="in up"><label>Password</label><input name="password" type="password" placeholder="At least 6 characters" autocomplete="current-password" minlength="6"></div>
           <div class="vlg-f" data-for="up"><label>Confirm password</label><input name="password2" type="password" placeholder="Type it again" autocomplete="new-password"></div>
-          <div class="vlg-f" data-for="fp1"><p class="vlg-help">Enter your matric number or the email on your account. We will email you a 6-digit code.</p><label>Matric number or email</label><input name="fpid" placeholder="VUG/26/1234 or you@email.com" autocapitalize="off" spellcheck="false" maxlength="120"></div>
+          <div class="vlg-f" data-for="fp1"><p class="vlg-help">Enter your matric number or the email on your account. We will email you a 6-digit code.</p><label>Matric number, username or email</label><input name="fpid" placeholder="VUG/26/1001, @username or email" autocapitalize="off" spellcheck="false" maxlength="120"></div>
           <div class="vlg-f" data-for="fp2"><p class="vlg-help vlg-sent"></p><label>6-digit code</label><input name="code" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code"></div>
           <div class="vlg-f" data-for="fp2"><label>New password</label><input name="np1" type="password" placeholder="At least 6 characters" autocomplete="new-password"></div>
           <div class="vlg-f" data-for="fp2"><label>Confirm new password</label><input name="np2" type="password" placeholder="Type it again" autocomplete="new-password"></div>
@@ -75,22 +75,21 @@
       e.preventDefault(); err.textContent = ''; const val = n => String(f[n].value || '').trim();
       let path, body;
       if (mode === 'in') {
-        let id = val('ident'); if (!id) { err.textContent = 'Enter your matric number or email.'; return; }
-        if (!id.includes('@')) { id = 'VUG/26/' + id.toUpperCase().replace(/\s+/g, '').replace(/^VUG\/26\//, ''); if (!/^VUG\/26\/[A-Z0-9]{2,12}(\/[A-Z0-9]{1,8})?$/.test(id)) { err.textContent = 'Matric number should look like VUG/26/1234.'; return; } }
+        let id = val('ident'); if (!id) { err.textContent = 'Enter your matric number, username or email.'; return; }
         if (f.password.value.length < 6) { err.textContent = 'Enter your password (at least 6 characters).'; return; }
         path = '/api/login'; body = { id, password: f.password.value };
       } else if (mode === 'up') {
-        const matric = 'VUG/26/' + val('matric').toUpperCase().replace(/\s+/g, '').replace(/^VUG\/26\//, '');
+        const username = val('username').toLowerCase().replace(/^@/, '');
         if (val('fullname').split(/\s+/).filter(Boolean).length < 2) { err.textContent = 'Enter your full name (first name and surname).'; return; }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(val('email'))) { err.textContent = 'Enter a valid email. You need it if you forget your password.'; return; }
-        if (!/^VUG\/26\/[A-Z0-9]{2,12}(\/[A-Z0-9]{1,8})?$/.test(matric)) { err.textContent = 'Matric number should look like VUG/26/1234.'; return; }
+        if (!/^[a-z0-9_.]{3,20}$/.test(username)) { err.textContent = 'Username: 3 to 20 letters, numbers, dots or underscores (no spaces).'; return; }
         if (!f.dept.value) { err.textContent = 'Choose your department.'; return; }
         const age = Math.floor(+f.age.value); if (!(age >= 15 && age <= 70)) { err.textContent = 'Enter your real age (15 or older).'; return; }
         if (f.password.value.length < 6) { err.textContent = 'Password must be at least 6 characters.'; return; }
         if (f.password.value !== f.password2.value) { err.textContent = 'Passwords do not match.'; return; }
-        path = '/api/signup'; body = { matric, fullname: val('fullname'), email: val('email'), dept: f.dept.value, age, password: f.password.value };
+        path = '/api/signup'; body = { username, fullname: val('fullname'), email: val('email'), dept: f.dept.value, age, password: f.password.value };
       } else if (mode === 'fp1') {
-        if (!val('fpid')) { err.textContent = 'Enter your matric number or email.'; return; }
+        if (!val('fpid')) { err.textContent = 'Enter your matric number, username or email.'; return; }
         path = '/api/forgot'; body = { id: val('fpid') };
       } else {
         if (!/^\d{6}$/.test(val('code'))) { err.textContent = 'Enter the 6-digit code from the email.'; return; }
@@ -103,6 +102,7 @@
         const j = await api(path, body);
         if (mode === 'fp1') { go.disabled = false; gate.querySelector('.vlg-sent').innerHTML = 'We sent a code to <b>' + escH(j.to) + '</b>. Check your inbox and spam folder.'; setMode('fp2'); return; }
         if (mode === 'fp2') toastLater('Password changed', 'You are logged in with your new password.');
+        if (mode === 'up' && j.user) toastLater('Welcome to Veritas', 'Your matric number is <b>' + escH(j.user.matric) + '</b> and your username is <b>@' + escH(j.user.username) + '</b>. Use either to log in.');
         loggedIn(j);
       } catch (e2) { err.textContent = e2.message; go.disabled = false; go.textContent = label; }
     };
@@ -120,7 +120,7 @@
       addAccountChip();
     });
   }
-  function addAccountChip() { if ($('#vlAcct')) return; const a = h('button', 'vlacct', '<span>' + escH(N.user.matric) + '</span><b>Log out</b>'); a.id = 'vlAcct'; a.onclick = logout; const t = $('#title'); if (t) t.appendChild(a); }
+  function addAccountChip() { if ($('#vlAcct')) return; const a = h('button', 'vlacct', '<span>' + escH(N.user.matric) + (N.user.username ? ' · @' + escH(N.user.username) : '') + '</span><b>Log out</b>'); a.id = 'vlAcct'; a.onclick = logout; const t = $('#title'); if (t) t.appendChild(a); }
   async function logout() { try { if (S()) await saveNow(VL.snapState()); await api('/api/logout', {}); } catch (e) { } try { localStorage.removeItem(TK); } catch (e) { } location.reload(); }
   N.logout = logout;
 
@@ -169,8 +169,9 @@
       case 'note': if (VL && S()) VL.toast('Veritas Online', escH(m.text)); break;
       case 'date_req': if (VL && S()) VL.dialog({ who: 'me', kicker: '♥ Someone likes you', text: '<b>' + escH(m.name) + '</b> (a real player) is asking you out.', choices: [{ t: 'Say yes', fn: () => { wsSend({ t: 'date_resp', to: m.from, accept: true }); return null; } }, { t: 'Say no, kindly', fn: () => { wsSend({ t: 'date_resp', to: m.from, accept: false }); return null; } }] }); break;
       case 'dating': { N.user.dating = m.with || 0; const s = S(); if (s) { const L = s.love = s.love || { history: [], pref: 'opp', stage: 'single', dates_: {} };
-          if (m.with) { L.player = { id: m.with, name: m.name }; VL.toast('♥ In a relationship', 'You and ' + escH(m.name) + ' are official.', 'good'); }
+          if (m.with) { L.player = { id: m.with, name: m.name }; VL.toast('♥ In a relationship', 'You and ' + escH(m.name) + ' are official.', 'good'); if (VL.coupleScene) setTimeout(() => VL.coupleScene(m.name, m.with), 400); }
           else { if (L.player && m.by) VL.toast('Relationship', escH(m.by) + ' ended the relationship.', 'bad'); else VL.toast('Relationship', 'You are single now.'); L.player = null; } VL.save(); } rerender(['pprof']); break; }
+      case 'concert': { const go = () => { if (VL && S() && VL.concertSet) VL.concertSet(m.c); else setTimeout(go, 1500); }; go(); break; }
       case 'sent': if (VL && S()) VL.toast('Money sent', naira(m.amount) + ' sent to ' + m.name + '.'); break;
       case 'steal_res': onSteal(m); break;
       case 'banned': stopWS = true; try { localStorage.removeItem(TK); } catch (e) { } showGate('This account has been banned by the game admin.'); break;
@@ -201,6 +202,7 @@
       case 'announce': VL.dialog({ who: 'rep', kicker: '📢 Announcement', text: escH(d.text), choices: [{ t: 'Okay', fn: () => null }] }); break;
       case 'party': { if (s.oparty && s.oparty.pid === d.id) break; const m = minOf(s.t); const st = m < 20 * 60 ? 20 * 60 : m < 23 * 60 ? m + 30 : m + 30; VL.announceParty({ loc: d.loc, host: d.host, start: st, end: st + 300, pid: d.id }); break; }
       case 'reset': N.restart(VL.freshLife()); break;
+      case 'concert': if (VL.concertSet) VL.concertSet(d); break;
     }
   }
 
@@ -274,6 +276,9 @@
     const u = N.user || {}; const el2 = (t, c, x) => VL.el(t, c, x);
     wrap.append(el2('div', 'sec', 'Account'));
     wrap.append(el2('div', 'txrow', '<div>Matric number</div><div class="amt">' + escH(u.matric) + '</div>'));
+    if (u.username) wrap.append(el2('div', 'txrow', '<div>Username</div><div class="amt">@' + escH(u.username) + '</div>'));
+    else { const ub = h('div', 'acctbox'); ub.innerHTML = '<div class="note">Pick a username so friends can find you and send you money.</div><input class="gname" name="un" placeholder="username (letters, numbers, _ .)" maxlength="20" autocapitalize="off"><div class="btnrow"><button class="unsave">Save username</button></div><div class="note unmsg"></div>';
+      ub.querySelector('.unsave').onclick = async () => { const m = ub.querySelector('.unmsg'); try { const j = await api('/api/account', { username: ub.querySelector('[name=un]').value.trim().replace(/^@/, '') }); N.user = Object.assign(N.user, j.user); m.textContent = 'Saved: @' + N.user.username; } catch (e) { m.textContent = e.message; } }; wrap.append(ub); }
     if (u.fullname) wrap.append(el2('div', 'txrow', '<div>Full name</div><div class="amt">' + escH(u.fullname) + '</div>'));
     if (u.dept) wrap.append(el2('div', 'txrow', '<div>Department</div><div class="amt">' + escH((DEPTS.find(d => d[0] === u.dept) || [0, u.dept])[1]) + '</div>'));
     wrap.append(el2('div', 'txrow', '<div>Email</div><div class="amt">' + (u.email ? escH(u.email) : '<span class="neg">Not set</span>') + '</div>'));
@@ -294,14 +299,25 @@
   const el = (t, c, x) => VL.el(t, c, x);
   const pb = (label, fn, dis) => { const b = h('button', null, label); if (dis) { b.disabled = true; b.title = dis; } b.onclick = () => { fn(); VL.renderPhone(); }; return b; };
   const prow = (...bs) => { const r = h('div', 'btnrow'); bs.forEach(x => r.append(x)); return r; };
-  function pinfo(id) { return N.online.find(x => x.id === id) || (N.lastSearch || []).find(x => x.id === id) || N.threads.find(x => x.id === id) || { id, name: N.names[id] || 'Student' }; }
+  /* buttons that send something show it clearly: a toast, then the button turns green with a tick for a minute */
+  N.sent = N.sent || {};
+  const sb = (key, label, done, fn, dis, msg) => { const t = N.sent[key]; if (t && Date.now() - t < 60000) { const b = h('button', 'vl-sent', '✓ ' + done); b.disabled = true; return b; }
+    return pb(label, () => { fn(); N.sent[key] = Date.now(); if (window.VL && VL.toast) VL.toast(done, msg || ''); try { navigator.vibrate && navigator.vibrate(30); } catch (e) { } }, dis); };
+  function pinfo(id) { const c = N.pcache && N.pcache[id]; const o = N.online.find(x => x.id === id) || (N.lastSearch || []).find(x => x.id === id) || N.threads.find(x => x.id === id); if (c) return Object.assign({}, o || {}, c); return o || (N.lastSearch || []).find(x => x.id === id) || N.threads.find(x => x.id === id) || { id, name: N.names[id] || 'Student' }; }
   function nearMe(id) { const o = N.others.get(id); if (!o) return false; const P = VL.P; return Math.hypot(o.x - P.x, o.z - P.z) < 7; }
-  function sendMoney(p) { VL.closePhone(); const amts = [1000, 5000, 20000, 100000];
-    VL.dialog({ who: 'me', kicker: 'Send money', text: 'How much do you want to send to <b>' + escH(p.name) + '</b>?' + (p.st === 'kidnapped' ? ' They are being held by bandits: it goes straight to the ransom.' : ''), choices: amts.map(a => ({ t: naira(a), fn: () => { if (!VL.spend(a, 'Sent to ' + p.name)) return 'You don\'t have ' + naira(a) + '.'; wsSend({ t: 'send', to: p.id, amount: a }); return null; } })).concat([{ t: 'Cancel', fn: () => null }]) }); }
+  function sendMoney(p) { N.payTo = p; N.payAmt = N.payAmt || ''; VL.setPhone('pmoney', p.id); }
+  N.pcache = N.pcache || {};
+  async function lookup(q) { const j = await api('/api/find?q=' + encodeURIComponent(q)); N.pcache[j.player.id] = j.player; return j.player; }
+  function relLine(p) { if (!p) return ''; if (p.dating || p.partner) return '<span class="vl-rel taken">♥ Taken' + (p.partner ? ' · ' + escH(p.partner) : '') + '</span>'; return '<span class="vl-rel">Single</span>'; }
   N.phone = (v, b, T) => {
     if (v === 'players') { T.textContent = 'Players';
       b.append(el('div', 'note', 'Real students playing right now. Tap a name to message them, send money, invite them to a group or to your room.'));
-      const sr = h('input', 'gname'); sr.placeholder = 'Search by name or matric number'; sr.value = N.q || ''; let st = null; sr.oninput = () => { N.q = sr.value; clearTimeout(st); st = setTimeout(search, 300); }; b.append(sr);
+      { const fb = h('div', 'acctbox vl-find'); fb.innerHTML = '<div class="sec" style="margin:0">Send money or find someone</div><div class="vl-findrow"><input class="gname" name="fq" placeholder="Matric number or @username" autocapitalize="off" spellcheck="false" maxlength="40"><button class="fgo">Find</button></div><div class="note fmsg"></div>';
+        const fq = fb.querySelector('[name=fq]'); fq.value = N.fq || ''; fq.oninput = () => { N.fq = fq.value; };
+        const go = async () => { const m = fb.querySelector('.fmsg'); const v = fq.value.trim(); if (!v) { m.textContent = 'Type a matric number like VUG/26/1001 or a username like @victor.'; return; } m.textContent = 'Searching…';
+          try { const p = await lookup(v); if (p.id === N.user.id) { m.textContent = 'That is you.'; return; } VL.setPhone('pprof', p.id); } catch (e) { m.textContent = e.message; } };
+        fb.querySelector('.fgo').onclick = go; fq.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }); b.append(fb); }
+      const sr = h('input', 'gname'); sr.placeholder = 'Search by name, username or matric number'; sr.value = N.q || ''; let st = null; sr.oninput = () => { N.q = sr.value; clearTimeout(st); st = setTimeout(search, 300); }; b.append(sr);
       if (N.q && N.lastSearch) { b.append(el('div', 'sec', 'Search results')); N.lastSearch.forEach(p => b.append(prow2(p))); if (!N.lastSearch.length) b.append(el('div', 'note', 'Nobody found.')); }
       const others = N.online.filter(x => x.id !== N.user.id);
       b.append(el('div', 'sec', 'Online now · ' + others.length)); if (!others.length) b.append(el('div', 'note', 'Nobody else is online right now.'));
@@ -310,16 +326,27 @@
       b.append(el('div', 'note', 'Logged in as ' + escH(N.user.matric) + '.')); b.append(prow(pb('Log out', () => logout())));
       return true; }
     if (v === 'pprof') { const id = +VL.phoneArg; const p = pinfo(id); T.textContent = p.name;
-      b.append(el('div', 'prof', '<div class="av">' + VL.avatar('me') + '</div><b>' + escH(p.name) + '</b><span>' + (p.lvl || p.level || 100) + ' Level · ' + (p.online || N.online.some(x => x.id === id) ? 'online' : 'offline') + (p.st === 'kidnapped' || p.status === 'kidnapped' ? ' · <b style="color:var(--bad)">held by bandits</b>' : '') + '</span>'));
+      if (!N.pcache[id] && !(N.pfetch = N.pfetch || {})[id]) { N.pfetch[id] = 1; api('/api/find?id=' + id).then(j => { N.pcache[id] = j.player; if (VL.UI.phone && VL.phoneView === 'pprof') VL.renderPhone(); }).catch(() => { }); }
+      b.append(el('div', 'prof', '<div class="av">' + VL.avatar('me') + '</div><b>' + escH(p.name) + '</b>' + (p.username || p.matric ? '<span class="vl-ids">' + (p.username ? '@' + escH(p.username) : '') + (p.username && p.matric ? ' · ' : '') + (p.matric ? escH(p.matric) : '') + '</span>' : '') + relLine(N.pcache[id] || (p.dating !== undefined ? p : null)) + '<span>' + (p.lvl || p.level || 100) + ' Level · ' + (p.online || N.online.some(x => x.id === id) ? 'online' : 'offline') + (p.st === 'kidnapped' || p.status === 'kidnapped' ? ' · <b style="color:var(--bad)">held by bandits</b>' : '') + '</span>'));
       const s = S(); const wrong = (s.wrongs || []).find(w => w.player === id && !w.settled);
       b.append(prow(pb('Message', () => VL.setPhone('pchat', id)), pb('Send money', () => sendMoney(Object.assign({ id }, p)))));
-      b.append(prow(pb('Invite to your room', () => wsSend({ t: 'room', to: id, kind: 'invite' })), pb('Ask to visit their room', () => wsSend({ t: 'room', to: id, kind: 'ask' }))));
-      if (N.user.adult) { const mine = N.user.dating === id; b.append(prow(mine ? pb('Break up', () => wsSend({ t: 'date_end' })) : pb('♥ Ask out', () => wsSend({ t: 'date_ask', to: id }), N.user.dating ? 'You are already in a relationship' : (p.adult === false ? 'Not available' : null))));
+      b.append(prow(sb('inv' + id, 'Invite to your room', 'Invite sent', () => wsSend({ t: 'room', to: id, kind: 'invite' }), null, escH(p.name) + ' gets your invite. If they accept, they walk over to your room.'), sb('ask' + id, 'Ask to visit their room', 'Request sent', () => wsSend({ t: 'room', to: id, kind: 'ask' }), null, 'Waiting for ' + escH(p.name) + ' to answer.')));
+      if (N.user.adult) { const mine = N.user.dating === id; b.append(prow(mine ? pb('Break up', () => wsSend({ t: 'date_end' })) : sb('date' + id, '♥ Ask out', 'Asked out', () => wsSend({ t: 'date_ask', to: id }), N.user.dating ? 'You are already in a relationship' : (p.adult === false ? 'Not available' : null))));
         if (mine) b.append(el('div', 'note', '♥ You are dating ' + escH(p.name) + '.')); else if (p.dating) b.append(el('div', 'note', 'In a relationship.')); }
       b.append(prow(pb('Pickpocket', () => { VL.closePhone(); wsSend({ t: 'steal', to: id }); }, !nearMe(id) ? 'Get close to them first' : s.cd.steal > s.t ? 'Too many eyes on you' : !VL.mature() ? 'Not available' : null)));
       if (wrong) b.append(prow(pb('Call your boys on ' + p.name, () => { VL.closePhone(); VL.callBoys(wrong); }, VL.BOYS.filter(k => (s.rel[k] || 0) >= 60).length < 2 ? 'Need 2 loyal boys (60+)' : null)));
       b.append(el('div', 'note', 'Room visits follow hostel rules: same hostel only, and only if they accept.'));
       return true; }
+    if (v === 'pmoney') { const p = N.payTo || pinfo(+VL.phoneArg); T.textContent = 'Send money'; const s = S();
+      b.append(el('div', 'prof', '<div class="av">' + VL.avatar('me') + '</div><b>' + escH(p.name) + '</b><span class="vl-ids">' + (p.username ? '@' + escH(p.username) + ' · ' : '') + escH(p.matric || '') + '</span>' + (p.st === 'kidnapped' || p.status === 'kidnapped' ? '<span style="color:var(--bad)">Held by bandits: this goes to the ransom</span>' : '')));
+      b.append(el('div', 'note', 'Your wallet: <b>' + naira(s.money) + '</b>'));
+      const box = h('div', 'acctbox'); box.innerHTML = '<input class="gname" name="amt" inputmode="numeric" placeholder="Amount, e.g. 5000" maxlength="16"><div class="chips vl-amts"></div><div class="btnrow"><button class="psend">Send</button></div><div class="note pmsg"></div>';
+      const ai = box.querySelector('[name=amt]'); ai.value = N.payAmt || ''; ai.oninput = () => { ai.value = ai.value.replace(/[^0-9]/g, ''); N.payAmt = ai.value; };
+      [1000, 5000, 20000, 100000, 1000000].forEach(a => { const c = h('button', null, naira(a)); c.onclick = () => { ai.value = String(a); N.payAmt = ai.value; }; box.querySelector('.vl-amts').append(c); });
+      box.querySelector('.psend').onclick = () => { const a = Math.floor(+ai.value || 0); const m = box.querySelector('.pmsg'); if (a <= 0) { m.textContent = 'Type an amount.'; return; }
+        if (!VL.spend(a, 'Sent to ' + p.name)) { m.textContent = 'You don\'t have ' + naira(a) + '.'; return; }
+        wsSend({ t: 'send', to: p.id, amount: a }); N.payAmt = ''; VL.toast('Money sent', naira(a) + ' to ' + escH(p.name) + '.'); try { navigator.vibrate && navigator.vibrate(30); } catch (e) { } VL.setPhone('pprof', p.id); };
+      b.append(box); return true; }
     if (v === 'pchat') { const id = +VL.phoneArg; const p = pinfo(id); T.textContent = p.name; N.asked = N.asked || new Set(); if (!N.asked.has(id)) { N.asked.add(id); wsSend({ t: 'dm_hist', with: id }); }
       const list = N.dms[id] || []; if (!list.length) b.append(el('div', 'note', 'Say hi to ' + escH(p.name) + '. This is a real player.'));
       list.forEach(m => b.append(el('div', 'msg' + (m.from === N.user.id ? ' me' : ''), '<span>' + escH(m.text) + '</span><small>' + new Date(m.created).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '</small>')));

@@ -50,6 +50,18 @@ function archDetail(L,g){if(!L.h||L.kind==='gate')return;
     archBox(dx,0.06,dz,fz?3.6:1.4,0.12,fz?1.4:3.6,0xbdb6a6);
     const wall=fz?L.z+F.sg*L.d/2:L.x+F.sg*L.w/2;const fx=fz?L.door.x:wall+F.sg*0.12,fzz=fz?wall+F.sg*0.12:L.door.z;
     archBox(fz?fx-1.4:fx,1.7,fz?fzz:fzz-1.4,fz?0.18:0.16,3.5,fz?0.16:0.18,trim);archBox(fz?fx+1.4:fx,1.7,fz?fzz:fzz+1.4,fz?0.18:0.16,3.5,fz?0.16:0.18,trim);archBox(fx,3.42,fzz,fz?3.0:0.16,0.18,fz?0.16:3.0,trim);
+    // A more finished entrance: a contrasting transom/sign band and paired wall lights.
+    // The sign is kept geometry-only so the scene remains crisp at mobile render distances.
+    const signY=Math.min(L.h-0.7,4.05);
+    if(L.w>7&&L.h>4){
+      if(fz){archBox(L.door.x,signY,wall+F.sg*0.16,Math.min(5.2,L.w*0.48),0.42,0.12,0x263d50);}
+      else{archBox(wall+F.sg*0.16,signY,L.door.z,0.12,0.42,Math.min(5.2,L.d*0.48),0x263d50);}
+    }
+    const lampY=2.75, lampOut=wall+F.sg*0.18;
+    [-2.0,2.0].forEach(off=>{
+      if(fz){archBox(L.door.x+off,lampY,lampOut,0.16,0.28,0.10,0xe8d6a2);}
+      else{archBox(lampOut,lampY,L.door.z+off,0.10,0.28,0.16,0xe8d6a2);}
+    });
     const hasAwning=['vcafe','macd','second','first','ggs','kiosk','barber','mart','centre','clinic','suya','mamaput','faculty'].includes(L.id);
     if(!hasAwning&&!hostel&&L.h>=5)archBox(fz?L.door.x:wall+F.sg*0.8,3.75,fz?wall+F.sg*0.8:L.door.z,fz?4:1.6,0.16,fz?1.6:4,dark);}}
 /* glass, frames, sills, mullions, hoods and trim: all instanced */

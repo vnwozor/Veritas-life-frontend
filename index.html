@@ -580,7 +580,7 @@ for(const id in LOCS){const L=LOCS[id];L.id=id;const cand=[];
   if(L.zone==='off')L.door=L.z>135?{x:L.x,z:L.z-L.d/2-1.5}:{x:L.x,z:L.z+L.d/2+1.5};}
 
 LOCS.gatepark.door={x:20,z:97.2};
-LOCS.fence={id:'fence',name:'Broken Fence',sub:'Behind the Boys Hostel · students slip out here',x:-85,z:103.5,w:4,d:2,h:0,kind:'hole',door:{x:-85,z:101.5}};
+LOCS.fence={id:'fence',name:'Back Fence',sub:'Behind the Boys Hostel · students slip out here',x:-85,z:103.5,w:4,d:2,h:0,kind:'hole',door:{x:-85,z:101.5}};
 /* ================= ROAD GRAPH (vehicles) ================= */
 const NODES=[];R.forEach(x=>R.forEach(z=>NODES.push({x,z})));
 const NI=(i,j)=>i*4+j;
@@ -719,6 +719,14 @@ function buildVehicle(kind,color,o){o=o||{};const P2=VPROF[kind],g=new THREE.Gro
     if(kind!=='bus'){const mz=kind==='pickup'?0.62:kind==='suv'?0.62:0.95;part(G.box,BM,0.18,0.1,0.07,s*(W/2+0.07),kind==='sedan'?1.08:1.2,mz,b,false);}});
   const pl=new THREE.Mesh(new THREE.PlaneGeometry(0.42,0.2),new THREE.MeshBasicMaterial({map:plateTex(o.plate||('KUJ '+ri(100,999)+' '+pick(['AA','BW','GW','KD','AB']))) }));pl.position.set(0,0.55,zr-0.11);pl.rotation.y=Math.PI;b.add(pl);
   if(o.taxi){part(G.box,0xf2c230,0.08,0.06,P2.L*0.7,W/2-0.02,0.82,0,b,false);part(G.box,0xf2c230,0.08,0.06,P2.L*0.7,-W/2+0.02,0.82,0,b,false);}
+  // front detailing (grille bars, badge, lamp inserts, lower lip, parking sensors and tail-lamp accents). The idea and the
+  // shapes come from the ChatGPT pass; the duplicate mirrors/handles it also added are left out, and everything is merged below.
+  if(kind!=='bus'){const gw=kind==='pickup'?0.72:kind==='suv'?0.58:0.48,gh=kind==='pickup'?0.27:0.20;
+    part(G.box,0x111820,gw,gh,0.045,0,0.66,zf+0.055,b,false);for(let gi=0;gi<4;gi++)part(G.box,VLIGHT.chrome,gw*0.88,0.018,0.018,0,0.66-gh*0.34+gi*gh*0.22,zf+0.083,b,false);
+    part(G.box,0xbfc9d0,0.12,0.12,0.025,0,0.66,zf+0.09,b,false);
+    [-1,1].forEach(side=>{const hx=side*(W/2-0.30),hy=kind==='suv'?0.91:0.79;part(G.box,0xffe4a0,0.12,0.035,0.04,hx,hy,zf+0.098,b,false);part(G.box,0xfff1d6,0.20,0.025,0.02,hx,hy-0.06,zf+0.10,b,false);
+      part(G.box,0xff3d35,0.20,0.07,0.035,side*(W/2-0.25),kind==='suv'?0.86:0.69,zr-0.045,b,false);});
+    [-0.55,0.55].forEach(x=>part(G.cyl,0x333b42,0.035,0.025,0.035,x,0.47,zf+0.13,b,false));part(G.box,0x20262b,W*0.82,0.055,0.08,0,0.37,zf+0.07,b,false);}
   // doors: panel pivots on the front edge; a dark opening shows behind when open
   const doors={};const dy=kind==='bus'?1.2:kind==='sedan'?0.68:0.8,dh=kind==='bus'?1.6:kind==='sedan'?0.52:0.6;
   const dz=kind==='pickup'?[[-0.05,0.95]]:kind==='bus'?[[2.2,1.0]]:[[0.15,1.0],[-0.9,0.95]];
@@ -741,7 +749,21 @@ function buildVehicle(kind,color,o){o=o||{};const P2=VPROF[kind],g=new THREE.Gro
   const sw=new THREE.Group();sw.position.set(-W/2+0.55,kind==='bus'?1.5:1.0,kind==='bus'?2.4:0.35);b.add(sw);const swr=part(G.torus,VLIGHT.trim,0.16,0.16,0.4,0,0,0,sw,false);swr.rotation.x=-0.5;
   [[-W/2+0.55,0.1],[W/2-0.55,0.1],[0,-0.75]].forEach(([x,z])=>{if(kind!=='bus')part(G.box,0x2a2420,kind==='pickup'&&z<0?0.01:0.5,0.5,0.12,x,0.95,z-0.2,b,false);});
   g.scale.setScalar(o.scale||1.42);if(o.add!==false)outdoor.add(g);
+  vMerge(b);wheels.forEach(w=>vMerge(w.spin));
   const V={g,b,kind,doors,boot,wheels,sw:swr,dir:0,x:0,z:0,rd:0,steer:0};return V;}
+/* every static part of the body that shares a material becomes one mesh: a car is drawn with ~15 calls instead of ~80.
+   Doors, boot lid, wheels and the hidden door/boot openings stay separate because they move or toggle. */
+const _mv=new THREE.Vector3(),_mn=new THREE.Vector3(),_m3=new THREE.Matrix3();
+function vMerge(b){const groups=new Map();b.children.slice().forEach(m=>{if(!m.isMesh||!m.visible)return;m.updateMatrix();const k=m.material.uuid;if(!groups.has(k))groups.set(k,{mat:m.material,list:[]});groups.get(k).list.push(m);});
+  groups.forEach(gr=>{if(gr.list.length<2)return;let nv=0,ni=0,uv=true;gr.list.forEach(m=>{const g=m.geometry;nv+=g.attributes.position.count;ni+=g.index?g.index.count:g.attributes.position.count;if(!g.attributes.uv)uv=false;});
+    const pos=new Float32Array(nv*3),nor=new Float32Array(nv*3),uvs=uv?new Float32Array(nv*2):null,idx=nv>65535?new Uint32Array(ni):new Uint16Array(ni);let vo=0,io=0,cast=false;
+    gr.list.forEach(m=>{const g=m.geometry,p=g.attributes.position,n=g.attributes.normal,t=g.attributes.uv;_m3.getNormalMatrix(m.matrix);
+      for(let i=0;i<p.count;i++){_mv.fromBufferAttribute(p,i).applyMatrix4(m.matrix);pos[(vo+i)*3]=_mv.x;pos[(vo+i)*3+1]=_mv.y;pos[(vo+i)*3+2]=_mv.z;
+        if(n){_mn.fromBufferAttribute(n,i).applyMatrix3(_m3).normalize();nor[(vo+i)*3]=_mn.x;nor[(vo+i)*3+1]=_mn.y;nor[(vo+i)*3+2]=_mn.z;}if(uvs){uvs[(vo+i)*2]=t.getX(i);uvs[(vo+i)*2+1]=t.getY(i);}}
+      if(g.index){for(let i=0;i<g.index.count;i++)idx[io++]=g.index.getX(i)+vo;}else for(let i=0;i<p.count;i++)idx[io++]=vo+i;
+      vo+=p.count;cast=cast||m.castShadow;b.remove(m);});
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.BufferAttribute(nor,3));if(uvs)geo.setAttribute('uv',new THREE.BufferAttribute(uvs,2));geo.setIndex(new THREE.BufferAttribute(idx,1));geo.computeBoundingSphere();
+    const mesh=new THREE.Mesh(geo,gr.mat);mesh.castShadow=cast;mesh.receiveShadow=true;mesh.userData.merged=1;b.add(mesh);});}
 /* roll the wheels by distance, steer the fronts, swing doors and boot */
 function vehAnim(V,dist,steer,dt){V.wheels.forEach(w=>{w.spin.rotation.x+=dist/(w.r*(V.g.scale.x||1));if(w.front)w.st.rotation.y+=((steer||0)-w.st.rotation.y)*Math.min(1,(dt||0.016)*8);});if(V.sw)V.sw.rotation.z=-(steer||0)*2.2;
   const k=Math.min(1,(dt||0.016)*3.2);for(const id in V.doors){const d=V.doors[id];d.a+=(d.t-d.a)*k;d.piv.rotation.y=-d.s*d.a*1.1;d.hole.visible=d.a>0.05;}
@@ -864,6 +886,18 @@ function archDetail(L,g){if(!L.h||L.kind==='gate')return;
     archBox(dx,0.06,dz,fz?3.6:1.4,0.12,fz?1.4:3.6,0xbdb6a6);
     const wall=fz?L.z+F.sg*L.d/2:L.x+F.sg*L.w/2;const fx=fz?L.door.x:wall+F.sg*0.12,fzz=fz?wall+F.sg*0.12:L.door.z;
     archBox(fz?fx-1.4:fx,1.7,fz?fzz:fzz-1.4,fz?0.18:0.16,3.5,fz?0.16:0.18,trim);archBox(fz?fx+1.4:fx,1.7,fz?fzz:fzz+1.4,fz?0.18:0.16,3.5,fz?0.16:0.18,trim);archBox(fx,3.42,fzz,fz?3.0:0.16,0.18,fz?0.16:3.0,trim);
+    // A more finished entrance: a contrasting transom/sign band and paired wall lights.
+    // The sign is kept geometry-only so the scene remains crisp at mobile render distances.
+    const signY=Math.min(L.h-0.7,4.05);
+    if(L.w>7&&L.h>4){
+      if(fz){archBox(L.door.x,signY,wall+F.sg*0.16,Math.min(5.2,L.w*0.48),0.42,0.12,0x263d50);}
+      else{archBox(wall+F.sg*0.16,signY,L.door.z,0.12,0.42,Math.min(5.2,L.d*0.48),0x263d50);}
+    }
+    const lampY=2.75, lampOut=wall+F.sg*0.18;
+    [-2.0,2.0].forEach(off=>{
+      if(fz){archBox(L.door.x+off,lampY,lampOut,0.16,0.28,0.10,0xe8d6a2);}
+      else{archBox(lampOut,lampY,L.door.z+off,0.10,0.28,0.16,0xe8d6a2);}
+    });
     const hasAwning=['vcafe','macd','second','first','ggs','kiosk','barber','mart','centre','clinic','suya','mamaput','faculty'].includes(L.id);
     if(!hasAwning&&!hostel&&L.h>=5)archBox(fz?L.door.x:wall+F.sg*0.8,3.75,fz?wall+F.sg*0.8:L.door.z,fz?4:1.6,0.16,fz?1.6:4,dark);}}
 /* glass, frames, sills, mullions, hoods and trim: all instanced */
@@ -888,6 +922,31 @@ function archBuild(){const m4=new THREE.Matrix4(),col=new THREE.Color();
   inst(frames,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.55,metalness:0.05}),6);
   inst(sills,mat(0xd6cfc0));inst(hoods,mat(0xd9d3c6));
   const tb=inst(ARCH.box,new THREE.MeshStandardMaterial({color:0xffffff,roughness:0.85}),6);if(tb)tb.castShadow=true;}
+/* ---- src/campus2.js ---- */
+/* ================= CAMPUS 2: Blocks A–D (side by side), Munch Box, Down Cafe =================
+   Runs before the campus is built, so the new buildings get walls, roofs, signs, doors and collision
+   like every other building. Positions and colours are estimates until checked against photos of the
+   real campus: tell me (or edit the numbers below) and they move. */
+/* the lecture blocks: one row facing the same road, A to D from west to east */
+const BLOCKS=['lecture','blockB','blockC','blockD'];
+{const L=LOCS.lecture;Object.assign(L,{name:'Block A',sub:'Lecture block · LT 1 & LT 2 · your classes',x:39,z:-14,w:11,d:12,h:10,wall:0xe9dfc9,roof:0x7a2f22,flat:true,iname:'Block A · LT 2'});
+  const extra={blockB:'Block B',blockC:'Block C',blockD:'Block D'};
+  [['blockB',52],['blockC',65],['blockD',78]].forEach(([id,x])=>{LOCS[id]={id,name:extra[id],sub:'Lecture block · classrooms and lecture theatres',x,z:-14,w:11,d:12,h:10,wall:0xe9dfc9,roof:0x7a2f22,flat:true,inside:'lecture',iname:extra[id]+' · Lecture theatre',open:[7,20],block:true};});
+  L.block=true;}
+/* Munch Box (a cafe) and Down Cafe (the cafe close to the Boys Hostel) */
+LOCS.munch={id:'munch',name:'Munch Box',sub:'Cafe · pastries, small chops, smoothies',x:19,z:-5,w:12,d:9,h:5,wall:0xf6e6b8,roof:0xc62b2b,inside:'cafe',open:[8,21],awning:true};
+LOCS.downcafe={id:'downcafe',name:'Down Cafe',sub:'Cafe by the Boys Hostel · rice, beans, swallow',x:-44,z:39,w:14,d:9,h:5,wall:0xe7efd9,roof:0x2f6b3e,inside:'cafe',open:[7,22],awning:true};
+MENUS.munch=[['Meat pie & Zobo',1200,40,20,4],['Small chops pack',1800,46,20,8],['Banana smoothie',1500,26,10,10]];
+MENUS.downcafe=[['Rice & beans with stew',700,46,25],['Eba & egusi',900,58,30],['Spaghetti & egg',800,44,25]];
+/* doors: the side nearest a road, the same rule the rest of the campus uses */
+for(const id of ['lecture','blockB','blockC','blockD','munch','downcafe']){const L=LOCS[id];L.id=id;const cand=[];
+  const up=R.filter(v=>v<L.z).pop(),dn=R.find(v=>v>L.z),lf=R.filter(v=>v<L.x).pop(),rt=R.find(v=>v>L.x);
+  if(up!=null)cand.push({d:L.z-up-L.d/2,x:L.x,z:L.z-L.d/2-1.5});if(dn!=null)cand.push({d:dn-L.z-L.d/2,x:L.x,z:L.z+L.d/2+1.5});
+  if(lf!=null)cand.push({d:L.x-lf-L.w/2,x:L.x-L.w/2-1.5,z:L.z});if(rt!=null)cand.push({d:rt-L.x-L.w/2,x:L.x+L.w/2+1.5,z:L.z});
+  cand.sort((a,b)=>a.d-b.d);L.door={x:cand[0].x,z:cand[0].z};
+  if(L.block)L.door={x:L.x,z:L.z-L.d/2-1.5};/* all four blocks open onto the same walkway */}
+/* every block has a big letter on it so you can tell them apart from the road */
+const blockOf=id=>BLOCKS.includes(id);
 /*@@END EARLY@@*/
 const ground=new THREE.Mesh(new THREE.PlaneGeometry(232,232),new THREE.MeshLambertMaterial({map:noiseTex('#7d8f4a',['#93a35a','#6b7a3c','#a08a55','#5f6e36'])}));
 ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;outdoor.add(ground);
@@ -994,7 +1053,7 @@ function buildLoc(L){const g=new THREE.Group();g.position.set(L.x,0,L.z);g.userD
     const hinge=new THREE.Group();hinge.position.set(fx0+(horiz?-1.1:Math.sign(dx)*0.1),0,fz0+(horiz?Math.sign(dz)*0.1:-1.1));g.add(hinge);
     part(G.box,0x7b5636,horiz?2.2:0.1,2.92,horiz?0.1:2.2,horiz?1.1:0,1.62,horiz?0:1.1,hinge);part(G.sph,0xe3b04b,0.08,0.08,0.08,horiz?1.9:Math.sign(dx)*0.08,1.5,horiz?Math.sign(dz)*0.08:1.9,hinge,false);
     DOORS.push({id:L.id,h:hinge,o:0,t:0,until:0,ang:horiz?-Math.sign(dz)*1.35:Math.sign(dx)*1.35});}
-  if(['vcafe','macd','second','first','ggs','kiosk','barber','mart','centre','clinic','suya','mamaput','faculty'].includes(L.id)){
+  if(L.awning||L.block||['vcafe','macd','second','first','ggs','kiosk','barber','mart','centre','clinic','suya','mamaput','faculty'].includes(L.id)){
     part(G.box,L.roof,horiz?L.w*0.8:2.4,0.2,horiz?2.4:L.d*0.8,horiz?0:Math.sign(dx)*(L.w/2+1.2),3.4,horiz?Math.sign(dz)*(L.d/2+1.2):0,g);
     const lab=new THREE.Mesh(new THREE.PlaneGeometry(Math.min(L.w,10)*0.9,1.4),new THREE.MeshBasicMaterial({map:textTex([[L.name.toUpperCase(),'800 30px sans-serif']],320,48,hexStr(L.roof),'#fff6df')}));
     const y=L.h<5?L.h+0.9:L.h-1;
@@ -1261,6 +1320,7 @@ function makeSim(o){const root=new THREE.Group(),body=new THREE.Group();root.add
 const EXPR={neutral:[0.15,0,0,0],happy:[0.75,1,0.06,0],smile:[0.55,1,0,0],sad:[0.5,0,-0.18,0.25],angry:[0.35,0,0.22,0],surprised:[0.9,1,-0.1,0],tired:[0.2,0,0,0.55],bored:[0.12,0,0,0.4],embarrassed:[0.35,1,-0.12,0.2],stressed:[0.4,0,-0.15,0.15]};
 function setExpr(s,e){s.userData.expr=e;}
 const JK=['thL','thR','knL','knR','shL','shR','elL','elR','hd','torso','body'];
+var POSEX={};/* extra poses added by modules (fights, kisses, jumps...) */
 function pose(s,kind,t,dt){const J=s.userData.J;if(!J)return;const ud=s.userData;dt=dt||0.016;
   const prev=ud.prev||(ud.prev={});JK.forEach(k=>{const r=J[k].rotation;const p=prev[k]||(prev[k]=[0,0,0]);p[0]=r.x;p[1]=r.y;p[2]=r.z;});const pb=J.body.position.y;
   JK.forEach(k=>J[k].rotation.set(0,0,0));J.body.position.set(0,0,0);
@@ -1318,11 +1378,11 @@ function pose(s,kind,t,dt){const J=s.userData.J;if(!J)return;const ud=s.userData
     case 'rifle':idleArms();J.shR.rotation.x=-0.55;J.elR.rotation.x=-1.2;J.shL.rotation.x=-1.0;J.elL.rotation.x=-0.75;J.shL.rotation.z=0.35;J.hd.rotation.y=Math.sin(t*0.5+sd)*0.5;break;
     case 'riflewalk':{const a=Math.sin(t)*0.6;J.thL.rotation.x=a;J.thR.rotation.x=-a;J.knL.rotation.x=Math.max(0,a)*1.2+0.05;J.knR.rotation.x=Math.max(0,-a)*1.2+0.05;J.shR.rotation.x=-0.55;J.elR.rotation.x=-1.2;J.shL.rotation.x=-1.0;J.elL.rotation.x=-0.75;J.shL.rotation.z=0.35;J.body.position.y=Math.abs(Math.cos(t))*0.03;J.torso.rotation.x=0.12;break;}
     case 'drive':sitLegs();J.shL.rotation.x=J.shR.rotation.x=-1.15;J.elL.rotation.x=J.elR.rotation.x=-0.45;J.shL.rotation.z=0.12;J.shR.rotation.z=-0.12;break;
-    default:idleArms();J.hd.rotation.y=Math.sin(t*0.35+sd)*0.3;J.torso.rotation.y=Math.sin(t*0.3+sd)*0.04;J.torso.rotation.z=Math.sin(t*0.22+sd)*0.025;J.body.position.x=Math.sin(t*0.22+sd)*0.012;J.thL.rotation.z=Math.sin(t*0.22+sd)*0.02;J.thR.rotation.z=Math.sin(t*0.22+sd)*0.02;if(md<-0.3){J.torso.rotation.x=0.12;J.hd.rotation.x=0.18;}}
+    default:if(POSEX[kind]){POSEX[kind](J,t,sd,idleArms,sitLegs);break;}idleArms();J.hd.rotation.y=Math.sin(t*0.35+sd)*0.3;J.torso.rotation.y=Math.sin(t*0.3+sd)*0.04;J.torso.rotation.z=Math.sin(t*0.22+sd)*0.025;J.body.position.x=Math.sin(t*0.22+sd)*0.012;J.thL.rotation.z=Math.sin(t*0.22+sd)*0.02;J.thR.rotation.z=Math.sin(t*0.22+sd)*0.02;if(md<-0.3){J.torso.rotation.x=0.12;J.hd.rotation.x=0.18;}}
   if(J.book&&!['sit','read','eat','lie','sitphone','sittalk','game','pray','kneel','dance','run','shoot','scrub','sweep','serve','board','stretch','checkwatch','fixclothes','hungry','excited','angryidle','cross','drive'].includes(kind)){J.shL.rotation.x=-0.5;J.shL.rotation.z=0.12;J.elL.rotation.x=-1.25;}
   if(J.blob)J.blob.visible=kind!=='lie'&&kind!=='drive'&&s.position.y<0.25&&J.body.visible;
   if(ud.umb&&kind!=='lie'&&kind!=='sit'){J.shR.rotation.set(-0.55,0,0.1);J.elR.rotation.set(-1.25,0,0);J.umb.visible=true;J.phone.visible=false;}else J.umb.visible=false;
-  let k=Math.min(1,dt*(kind==='walk'||kind==='run'||kind==='dance'?20:9));if(ud.snap){k=1;ud.snap=false;}
+  let k=Math.min(1,dt*(kind==='walk'||kind==='run'||kind==='dance'||(POSEX[kind]&&POSEX[kind].fast)?20:9));if(ud.snap){k=1;ud.snap=false;}
   JK.forEach(q=>{const r=J[q].rotation,p=prev[q];r.set(p[0]+(r.x-p[0])*k,p[1]+(r.y-p[1])*k,p[2]+(r.z-p[2])*k);});J.body.position.y=pb+(J.body.position.y-pb)*k;
   // face: blink + expression
   const E=EXPR[ud.expr]||EXPR.neutral;ud.blink-=dt;const closed=ud.blink<0.12||kind==='lie';if(ud.blink<0)ud.blink=rnd(2,5);
@@ -1540,7 +1600,7 @@ const BUILD={
     for(let r=0;r<5;r++)for(let c=0;c<6;c++){const x=-7.5+c*3,z=-2.2+r*2.4;part(G.box,0x8a6a45,2.4,0.1,0.8,x,1.25,z-0.55,I.g,false);part(G.box,0x4a4a4a,0.08,1.2,0.08,x,0.62,z-0.55,I.g,false);chair(I,x,z,Math.PI,0x2b5f8a);}
     const seatsG=new THREE.Group();seatsG.position.set(0,0,2);I.g.add(seatsG);
     addObj(I,seatsG,{id:'seat',name:'Seats',ly:2.6,spot:{x:9,z:1},acts:()=>{const c=curClass(),m=minOf(S.t),a=[...examActs(I)];
-      if(c)a.push(A('Attend '+c.code,fmtDur(c.end-m)+' · lecture in progress',()=>{c.st='attending';const s=freeSeat(I)||I.seats[0];s.used=true;startAction('Lecture: '+c.code,c.end-m,{cls:c,where:'lecture',place:{x:s.x,y:0,z:s.z,r:Math.PI,pose:'read'},per:()=>{N('energy',-0.04);N('fun',-0.02);},done:()=>{c.st='attended';S.held++;S.attended++;addStudy(0.8);S.skills.academic+=0.04;
+      if(c)a.push(A('Attend '+c.code,fmtDur(c.end-m)+' · lecture in progress',()=>{c.st='attending';const s=freeSeat(I)||I.seats[0];s.used=true;startAction('Lecture: '+c.code,c.end-m,{cls:c,where:I.id,place:{x:s.x,y:0,z:s.z,r:Math.PI,pose:'read'},per:()=>{N('energy',-0.04);N('fun',-0.02);},done:()=>{c.st='attended';S.held++;S.attended++;addStudy(0.8);S.skills.academic+=0.04;
         if(chance(.25)){const ok=S.study>3||S.skills.academic>2;toast('Surprise test',ok?'You knew the answers. That will help your CA.':'You stared at the paper. That one will hurt your CA.',ok?'good':'bad');if(ok)S.study+=1;else S.study=Math.max(0,S.study-0.5);}else toast('Lecture','Attendance taken for '+c.code+'.','good');},onStop:()=>{c.st='pending';}});}));
       else{const nx=S.today.classes.find(c=>c.st==='pending');a.push(A(nx?'Next: '+nx.code:'No more lectures today',nx?fmtTime(nx.start)+' – '+fmtTime(nx.end):'Check your timetable on your phone',()=>{},{dis:nx?'Come back from '+fmtTime(nx.start-30):'Nothing scheduled'}));
         a.push(A('Read quietly','1h · empty hall',()=>{const s=freeSeat(I)||I.seats[0];startAction('Reading in LT 2',60,{place:{x:s.x,y:0,z:s.z,r:Math.PI,pose:'read'},per:()=>N('energy',-0.05),done:()=>addStudy(0.9)});}));}
@@ -1549,7 +1609,7 @@ const BUILD={
       else a.push(A('No assignment due','Your course rep will message you',()=>{},{dis:'Nothing to submit'}));return a;}});
     I.lect=interiorSim(I,{skin:0x4f321f,shirt:0x3c4a6b,pants:0x222222,hairStyle:'low',hair:1,glasses:true,longSleeve:true,build:1.15},'lecturer');I.lect.g.userData.npc='lecturer';I.pick.push(I.lect.g);
     I.crowd=[];for(let k=0;k<(QM?14:9);k++){const r=interiorSim(I,randomLook(k%2===1),'student');r.g.userData.npc='student';I.pick.push(r.g);I.crowd.push(r);}
-    I.populate=()=>{resetInt(I);const m=minOf(S.t);const c=S.today.classes.find(x=>m>=x.start-20&&m<x.end);
+    I.populate=()=>{resetInt(I);const m=minOf(S.t);const c=S.today.classes.find(x=>m>=x.start-20&&m<x.end&&(x.loc||'lecture')===I.id);
       if(I.board.material.map)I.board.material.map.dispose();
       I.board.material=new THREE.MeshLambertMaterial({map:textTex(c?[[c.code,'700 64px Georgia'],[pick(['Algorithms','Matrices','Kinematics','Use of English','Logic gates']),'500 40px Georgia']]:[['','10px sans-serif']],512,256,'#24402f','#f2f2e8')});
       if(c){if(m>=c.start)placeSim(I.lect,0,-7.4,0,'board',0);else placeSim(I.lect,-6,-4.4,Math.PI*0.1,'talk',0);I.crowd.forEach(r=>seatSim(I,r,freeSeat(I),chance(.7)?'read':'sit'));}
@@ -1973,7 +2033,7 @@ function tickMinute(){S.t+=1;const m=minOf(S.t),T=S.today,n=S.needs;
   if(T.party&&m===T.party.start-30)toast('Social night','Departmental social night at the Student Centre from 6 PM. Entry ₦500.');
   if(n.food<25)N('stress',0.02);if(n.energy<25)N('stress',0.02);if(n.hygiene<25)N('stress',0.012);if(n.fun<20)N('stress',0.012);if(n.fun>60&&n.food>50)N('stress',-0.01);
   if(ACT){ACT.left--;if(ACT.per)ACT.per();if(ACT.left<=0){const a=ACT;ACT=null;$('#act').hidden=true;bubble.hidden=true;endAction(a);if(a.done)a.done();if(a.total>=20&&!a.sleep)xp(a.cls||a.mass?25:a.total>=90?12:6);checkGoals();save();}}
-  T.classes.forEach(c=>{if(m===c.start-15&&c.st==='pending')toast('Class soon',c.code+' starts in 15 minutes at the Lecture Hall.');
+  T.classes.forEach(c=>{if(m===c.start-15&&c.st==='pending')toast('Class soon',c.code+' starts in 15 minutes at '+(LOCS[c.loc||'lecture']||LOCS.lecture).name+'.');
     if(m===c.end&&c.st!=='attended'&&!(c.st==='attending'&&ACT&&ACT.cls===c)){c.st='missed';S.held++;toast('Missed class','You missed '+c.code+'. Attendance is part of your grade.','bad');if(chance(.5))msg('rep',pick(['Una no come '+c.code+' today? Lecturer took attendance o.','Attendance was taken for '+c.code+'. Hope you\'re fine?']));}});
   T.masses.forEach(ms=>{if(m===ms.start-20&&ms.st==='pending')toast('Mass soon',ms.kind+' starts in 20 minutes at the Chapel. Mass is compulsory: missing it is a '+naira(ECON.massFine)+' fine.');
     if(m===ms.end&&ms.st!=='attended'&&!(ms.st==='attending'&&ACT&&ACT.mass===ms)){ms.st='missed';S.masses++;S.massDebt++;massFine(ms);}});
@@ -2230,7 +2290,7 @@ function chatWhere(k){const h=minOf(S.t)/60,w=wd(S.t),day=dayOf(S.t);if(HOOKS.wh
   if(k==='philani'){if(h>=6&&h<19)return {id:'chapel'};return {id:'admin'};}
   return {id:'boys'};}
 function chatAsleep(k){const h=minOf(S.t)/60;if(k==='mum'||k==='dad')return h>=22.5||h<5.5;if(k==='lecturer')return h>=21||h<7;if(k==='philani')return h>=22||h<5;if(k==='femi')return h>=2&&h<9;return h>=23.5||h<6;}
-function chatInClass(k){if(['mum','dad','lecturer','philani'].includes(k))return false;const m=minOf(S.t);const c=S.today&&S.today.classes.find(c=>m>=c.start&&m<c.end);if(!c)return false;const wh=chatWhere(k);return wh.id==='lecture';}
+function chatInClass(k){if(['mum','dad','lecturer','philani'].includes(k))return false;const m=minOf(S.t);const c=S.today&&S.today.classes.find(c=>m>=c.start&&m<c.end);if(!c)return false;const wh=chatWhere(k);return !!(LOCS[wh.id]&&LOCS[wh.id].block);}
 function locName(id){return id&&LOCS[id]?fx(LOCS[id].name):'campus';}
 function chatCtx(k){const m=minOf(S.t),h=m/60,wh=chatWhere(k);const nx=S.today?S.today.classes.find(c=>c.st==='pending'&&c.end>m):null;const ms=S.today?S.today.masses.find(x=>x.st==='pending'&&x.end>m):null;const A=S.flags.assign;
   const food=h<11?'Mama Put has akara and pap till 11.':h<15?'GGS swallow is the best for lunch.':h<17?'Veritas Cafe jollof dey.':h<23?'Mallam Musa\'s suya is open tonight 🔥':'Everywhere don close 😭 soak garri.';
@@ -2410,13 +2470,13 @@ function randomEvent(){if(busy()||W.fading)return;const d=dayOf(S.t);const ok=EV
 
 /* ================= OUTDOOR ACTIONS ================= */
 function A(label,info,fn,o={}){return {label,info,fn,...o};}
-function curClass(){const m=minOf(S.t);return S.today.classes.find(c=>c.st==='pending'&&m>=c.start-30&&m<c.start+30);}
+function curClass(){const m=minOf(S.t);const here=S.inside&&LOCS[S.inside]&&LOCS[S.inside].block?S.inside:null;return S.today.classes.find(c=>c.st==='pending'&&m>=c.start-30&&m<c.start+30&&(!here||(c.loc||'lecture')===here));}
 function curMass(){const m=minOf(S.t);return S.today.masses.find(c=>c.st==='pending'&&m>=c.start-30&&m<c.start+20);}
 function outdoorActions(id){const L=[...extraActs(id)];
   switch(id){
   case 'fence':{const inC=P.z<106;
-    L.push(A('Sneak out through the gap','No exeat needed… if security doesn\'t catch you. Caught = expulsion or a big bribe',()=>sneak(1),{now:true,dis:W.drive?'Park the car first':!inC?'You are already outside':null}));
-    L.push(A('Sneak back into school','Climb back through the gap. Caught = expulsion or a big bribe',()=>sneak(0),{now:true,dis:W.drive?'Park the car first':inC?'You are already inside':null}));break;}
+    L.push(A('Jump the fence','No exeat needed… if security doesn\'t catch you. Caught = expulsion or a big bribe',()=>sneak(1),{now:true,dis:W.drive?'Park the car first':!inC?'You are already outside':null}));
+    L.push(A('Jump back into school','Climb back over the wall. Caught = expulsion or a big bribe',()=>sneak(0),{now:true,dis:W.drive?'Park the car first':inC?'You are already inside':null}));break;}
   case 'sports':
     if(S.weather==='heavy')L.push(A('Field is flooded','Thunderstorm · come back when it stops',()=>{},{dis:'Too much rain'}));
     else L.push(A('Play football','1h 30m · fun, fitness',()=>startAction('Playing football',90,{per:()=>{N('fun',0.6);N('energy',-0.12);N('hygiene',-0.15);N('stress',-0.12);},done:()=>{rel('tunde',3);addMoodlet('Scored a goal',8,240);}})));
@@ -2485,7 +2545,7 @@ function openLoc(id){if(!S||W.fading)return;if(W.drive){toast('Driving','Park an
   acts.forEach(a=>{const r=a.cost?'<span class="c">'+naira(a.cost)+'</span>':a.pay?'<span class="p">+'+(typeof a.pay==='number'?naira(a.pay):a.pay)+'</span>':'';
     const b=el('button','opt','<div class="l"><b>'+a.label+'</b><span>'+(a.dis||a.info||'')+'</span></div><div class="r">'+r+'</div>');if(a.dis||W.ride)b.disabled=true;
     b.onclick=()=>{closeSheet();if(ACT)stopAction(true);if(here||a.now)a.fn();else goTo(id,'walk',()=>{const again=outdoorActions(id).find(x=>x.label===a.label);if(again&&!again.dis)again.fn();});};wrap.append(b);});
-  if(id==='lecture'||id==='chapel'){const T=S.today;const list=(id==='lecture'?T.classes.map(c=>c.code+' · '+fmtTime(c.start)+' – '+fmtTime(c.end)+' · '+c.st):T.masses.map(c=>c.kind+' · '+fmtTime(c.start)+' · '+c.st));
+  if(LOCS[id].block||id==='chapel'){const T=S.today;const list=(LOCS[id].block?T.classes.filter(c=>(c.loc||'lecture')===id).map(c=>c.code+' · '+fmtTime(c.start)+' – '+fmtTime(c.end)+' · '+c.st):T.masses.map(c=>c.kind+' · '+fmtTime(c.start)+' · '+c.st));
     wrap.append(el('div','note',list.length?'Today: '+list.join('<br>'):'Nothing scheduled here today.'));}
   openSheet(L.name,L.sub,wrap);}
 
@@ -2540,7 +2600,7 @@ function setPhone(v,arg){if(!UI.phone)openPhone(v);if(!UI.phone)return;phoneView
 function openPhone(view){if(S.phoneSeized){toast('No phone','Security has your phone. Collect it at the Main Gate.','bad');setTab('home');return;}
   if(S.flags.charger&&S.flags.charger.lost&&S.t>S.flags.charger.dead){toast('Phone is dead','Your battery is flat. Buy a charger at Mama Ngozi Kiosk (₦2,500).','bad');setTab('home');return;}UI.phone=true;phoneView=view||'home';renderPhone();$('#phoneWrap').hidden=false;document.body.classList.add('phone-open');}
 function closePhone(){UI.phone=false;$('#phoneWrap').hidden=true;document.body.classList.remove('phone-open');setTab(cam.mode==='map'&&!S.inside?'map':'home');}
-$('#pClose').onclick=closePhone;$('#pBack').onclick=()=>{const BK=Object.assign({pchat:'players',pprof:'players',ogroup:'groups',onew:'groups',group:'groups',newgroup:'groups'},HOOKS.back);if(BK[phoneView]){phoneView=BK[phoneView];renderPhone();return;}if(phoneView==='home')closePhone();else{phoneView=phoneView==='thread'?'msgs':phoneView==='profile'?'contacts':'home';renderPhone();}};
+$('#pClose').onclick=closePhone;$('#pBack').onclick=()=>{const BK=Object.assign({pmoney:'pprof',pchat:'players',pprof:'players',ogroup:'groups',onew:'groups',group:'groups',newgroup:'groups'},HOOKS.back);if(BK[phoneView]){phoneView=BK[phoneView];renderPhone();return;}if(phoneView==='home')closePhone();else{phoneView=phoneView==='thread'?'msgs':phoneView==='profile'?'contacts':'home';renderPhone();}};
 $('#pSend').onclick=()=>{const v=$('#pIn').value.trim();if(!v||phoneView!=='thread')return;$('#pIn').value='';chatSend(phoneArg,v);};
 $('#pIn').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#pSend').onclick();}});
 $('#pVoice').onclick=()=>{if(phoneView==='thread')chatSend(phoneArg,null,'voice');};$('#pPhoto').onclick=()=>{if(phoneView==='thread')chatSend(phoneArg,null,'photo');};
@@ -2780,7 +2840,7 @@ let objKey='';
 function objectives(){const T=S.today,m=minOf(S.t),o=[];
   if(S.intro)o.push({t:'Go inside the Boys Hostel, Room 104',loc:'boys',c:'urgent'});
   T.masses.forEach(ms=>o.push({t:ms.kind+' · '+fmtTime(ms.start),loc:'chapel',c:ms.st==='attended'?'done':ms.st==='missed'?'miss':m>ms.start-60?'urgent':''}));
-  T.classes.forEach(c=>o.push({t:'Attend '+c.code+' · '+fmtTime(c.start),loc:'lecture',c:c.st==='attended'?'done':c.st==='missed'?'miss':m>c.start-45?'urgent':''}));
+  T.classes.forEach(c=>o.push({t:'Attend '+c.code+' · '+(LOCS[c.loc||'lecture']||LOCS.lecture).name+' · '+fmtTime(c.start),loc:c.loc||'lecture',c:c.st==='attended'?'done':c.st==='missed'?'miss':m>c.start-45?'urgent':''}));
   if(S.needs.food<45)o.push({t:'Get food · '+Math.round(S.needs.food)+'% full',loc:S.money>=900?'vcafe':'second',c:S.needs.food<25?'urgent':''});
   if(S.needs.energy<30)o.push({t:S.home?'Sleep at home · '+homeName():'Sleep in your bunk',loc:homeId(),c:'urgent'});
   if(S.dropJob){const J=S.dropJob;o.push({t:'Drop: '+(J.stage==='pickup'?'pick up at '+locName(J.from):'take rider to '+locName(J.to))+' · '+naira(J.pay),loc:J.stage==='pickup'?J.from:J.to,c:'urgent'});}
@@ -2800,7 +2860,7 @@ function objectives(){const T=S.today,m=minOf(S.t),o=[];
   (S.plans||[]).filter(p=>p.state==='pending'&&p.start-S.t<180&&p.end>S.t).forEach(p=>o.push({t:p.title+' · '+fmtTime(p.start),loc:p.loc,c:p.start-S.t<30?'urgent':''}));
   if(S.flags.charger&&!S.flags.charger.lost)o.push({t:'Get your charger from '+locName(S.flags.charger.loc),loc:S.flags.charger.loc,c:''});
   if(m>=20*60)o.push({t:S.home?'Get home before the gate locks at 10 PM':'Be in the hostel before 10:00 PM',loc:homeId(),c:S.at===homeId()?'done':'urgent'});
-  const g=currentGoal();W.objLocs={};o.slice(0,6).forEach(x=>{if(x.loc)W.objLocs[x.loc]=1;});const key=o.map(x=>x.t+x.c).join('|')+(g?g.id:'');if(key===objKey)return;objKey=key;
+  (HOOKS.todo||[]).forEach(f=>{try{f(o);}catch(e){}});const g=currentGoal();W.objLocs={};o.slice(0,6).forEach(x=>{if(x.loc)W.objLocs[x.loc]=1;});const key=o.map(x=>x.t+x.c).join('|')+(g?g.id:'');if(key===objKey)return;objKey=key;
   const ul=$('#objL');ul.innerHTML='';o.slice(0,6).forEach(x=>{const li=el('li',x.c,'<span class="dot"></span><span>'+x.t+'</span>');li.onclick=()=>openLoc(x.loc);ul.append(li);});
   if(!o.length)ul.append(el('li',null,'<span class="dot"></span><span>Free time. Study, rest or hustle.</span>'));
   const gl=$('#goalL');gl.innerHTML='';if(g){const li=el('li','goal','<span class="dot"></span><span>'+g.t+' · '+g.d+(g.rw?' · <b style="color:var(--gold)">+'+naira(g.rw)+'</b>':'')+'</span>');li.onclick=()=>openPhone('goals');gl.append(li);}}
@@ -2857,7 +2917,7 @@ function updateNpcs(dt,now){const h=minOf(S.t)/60;const vis=!S.inside;W.navBudge
       if(W.navBudget<=0){n.g.position.set(n.x,0,n.z);continue;}W.navBudget--;
       if(n.bench){n.bench.used=0;n.bench=null;}const L=npcDest(n);n.at=L;const dest=L.bench?{x:L.bench.x+Math.sin(L.bench.r)*1.2,z:L.bench.z+Math.cos(L.bench.r)*1.2}:{x:L.door.x+rnd(-3,3),z:L.door.z+rnd(-1.5,1.5)};
       n.path=navPath(n,dest)||route(n,dest);n.i=0;n.arrived=true;n.face=null;n.micro=null;
-      const cls=S.today&&S.today.classes.find(c=>{const m=minOf(S.t);return c.start-m>0&&c.start-m<25;});n.rush=n.kind==='student'&&L.id==='lecture'&&!!cls;if(n.umb==null)n.umb=chance(.6);if(n.style==null)n.style=n.kind==='student'&&chance(.3)?'walkphone':'walk';}
+      const cls=S.today&&S.today.classes.find(c=>{const m=minOf(S.t);return c.start-m>0&&c.start-m<25;});n.rush=n.kind==='student'&&!!L.block&&!!cls;if(n.umb==null)n.umb=chance(.6);if(n.style==null)n.style=n.kind==='student'&&chance(.3)?'walkphone':'walk';}
     const spd=n.sp*(isRain()?1.25:1)*(n.rush?1.8:1);const done=navMove(n,dt,spd,NAV,false);n.ph+=dt*Math.max(0.5,n.v||0)*(n.rush?1.4:1.75);
     n.g.position.set(n.x,0,n.z);n.g.rotation.y=n.dir;n.g.visible=!n.hidden;const near=Math.hypot(n.x-cam.tx,n.z-cam.tz);if(vis&&n.g.visible&&near<110){n.g.userData.umb=isRain()&&n.umb&&!n.rush;n.g.userData.J.face.visible=near<45;pose(n.g,done||(n.v||0)<0.25?'stand':(n.rush?'run':(isRain()&&n.umb?'walk':n.style||'walk')),done?now/1000:n.ph,dt);}}
   trafficRules(dt);
@@ -3146,17 +3206,17 @@ function exeatDialog(){const day=dayOf(S.t);if(S.flags.exeat===day)return dialog
 function refusedExeat(){dialog({who:'me',kicker:'Exeat refused',text:'Outside the office, Mr. Jude, the hall assistant, catches up with you. "Small something and I can sign it for you. Nobody will know."',warn:'Bribery and leaving without approval can get you expelled.',choices:[
   {t:'Pay Mr. Jude ₦3,000',fn:()=>{if(S.money<3000)return '"Come back when you are serious."';spend(3000,'Paid Mr. Jude for an exeat');if(bribeOk(0.68)){S.flags.exeat=dayOf(S.t);S.flags.fakeExeat=true;return 'He stamps a form behind the door. You have an exeat for today. Hope nobody checks the register.';}addDiscipline(3,'Bribing staff for an exeat');S.suspicion+=20;return 'Mr. Paulinus walks in on the deal. Mr. Jude claims you forced the money on him. Three points.';}},
   {t:'Find Officer Tiger at the gate',fn:()=>'Everybody knows Officer Tiger lets people out for ₦5,000. Go to the Main Gate and he will be there.'},
-  {t:'Forget it. There\'s always the broken fence…',fn:()=>'Students whisper about a gap in the back wall behind the Boys Hostel. Getting caught there means expulsion, or a big bribe.'},
+  {t:'Forget it. There\'s always the back fence…',fn:()=>'Students whisper about a low spot in the back wall behind the Boys Hostel where you can jump over. Getting caught there means expulsion, or a big bribe.'},
   {t:'Forget it',fn:()=>null}]});}
-/* escaping through the broken fence */
+/* escaping through the back fence */
 const HOLE={c:0,x:-85,z:106,w:2.6,d:1.6,a:0};
 function holeOpen(on){raster(NAV,HOLE,0.3,NAV.dyn,on?0:1);}
-function sneak(dir){if(W.ride||W.drive)return;holeOpen(true);const tgt={x:-85,z:dir?111:100};const pth=navPath(P,tgt);if(!pth){holeOpen(false);return toast('No way through','You can\'t reach the gap from here.');}
+function sneak(dir){if(W.ride||W.drive)return;holeOpen(true);const tgt={x:-85,z:dir?111:100};const pth=navPath(P,tgt);if(!pth){holeOpen(false);return toast('No way through','You can\'t reach the fence from here.');}
   P.path=pth;P.i=0;P.mode='walk';S.at=null;W.after=()=>{holeOpen(false);escapeRoll(dir);};clearTimeout(W.holeT);W.holeT=setTimeout(()=>{if(Math.hypot(P.x-HOLE.x,P.z-HOLE.z)>3)holeOpen(false);},40000);toast(dir?'Sneaking out':'Sneaking back in','Head down. Move fast.');}
 function escapeRoll(dir){const h=minOf(S.t)/60;const near=guards.some(g=>!g.hidden&&Math.hypot(g.x-P.x,g.z-P.z)<45);let p=0.24+(near?0.2:0)+(h>=6&&h<19?0.08:-0.04)-S.skills.street*0.03;p=clamp(p,0.1,0.6);
   if(!chance(p)){S.skills.street+=0.1;if(dir){S.flags.escaped=dayOf(S.t);toast('You\'re out','Nobody saw you. Bwari Junction is yours… until someone checks.','good');}else toast('Back inside','You slip back into campus like nothing happened.','good');W.side=P.z>103?1:0;return;}
   const cost=h>=21||h<5?10000:6000;
-  dialog({who:'tiger',kicker:'Caught at the broken fence by Officer Tiger',warn:'Escaping school is an expellable offence.',text:'A torch hits your face. "Ehen! So this is where you people pass. You know what this means. Panel. Expulsion."',choices:[
+  dialog({who:'tiger',kicker:'Caught at the back fence by Officer Tiger',warn:'Escaping school is an expellable offence.',text:'A torch hits your face. "Ehen! So this is where you people pass. You know what this means. Panel. Expulsion."',choices:[
     {t:'Bribe him ('+naira(cost)+')',fn:()=>{if(S.money<cost){setTimeout(()=>endLife('expelled','escaping from school'),300);return '"You don\'t have money and you\'re trying to escape? Follow me."';}spend(cost,'Bribed security at the fence');if(bribeOk(0.66)){S.suspicion+=12;W.side=P.z>103?1:0;return '"Go. And if I see you here again, it\'s Student Affairs."';}setTimeout(()=>endLife('expelled','escaping from school and attempted bribery'),300);return 'He takes the money as evidence. Your name goes straight to the panel.';}},
     {t:'Accept it',fn:()=>{setTimeout(()=>endLife('expelled','escaping from school'),300);return 'You follow him to the security post.';}}]});}
 /* smoking in the hostel and the drug test */
@@ -3297,7 +3357,7 @@ function pregTick(){const P2=S.preg;if(!P2||S.over)return;const d=dayOf(S.t);con
     dialog({who:P2.me?'me':partnerId(),kicker:'Pregnant',text:txt+'<br><br>What happens now?',choices:[
       {t:P2.me?'Keep the baby':'Tell '+(pFemale()?'her':'him')+' you\'ll stand by '+(pFemale()?'her':'you'),fn:()=>{P2.st='keeping';P2.show=d+ri(8,12);rel(partnerId(),P2.me?0:12);return 'Your heart is pounding, but you decide. Sooner or later, people will notice.';}},
       {t:P2.me?'Go to a private clinic outside school (₦40,000)':'Pay for '+(pFemale()?'her':'a')+' private clinic visit outside school (₦40,000)',fn:()=>{if(S.money<40000)return 'You don\'t have ₦40,000. You have to find the money first. Top up, borrow or hustle, then decide in Notifications.';
-        if(P2.me&&onCampusP()&&!hasExeat()){P2.st='clinic';return 'You need to leave school for that: get an exeat, see Officer Tiger, or use the broken fence. Then use "Private clinic" at the Main Gate.';}
+        if(P2.me&&onCampusP()&&!hasExeat()){P2.st='clinic';return 'You need to leave school for that: get an exeat, see Officer Tiger, or use the back fence. Then use "Private clinic" at the Main Gate.';}
         spend(40000,'Private clinic, Bwari');P2.st='ended';S.preg=null;addMoodlet('A heavy secret',-14,4320);if(!P2.me)rel(partnerId(),-6);if(chance(.2)){setTimeout(()=>scandal('clinic'),2000);return 'It is handled quietly… or so you think.';}return 'A private clinic in Bwari. Nobody on campus knows. It weighs on you for days.';}},
       {t:P2.me?'Hide it and pretend nothing happened':'Ignore the message',fn:()=>{P2.st='keeping';P2.show=d+ri(6,9);if(!P2.me){rel(partnerId(),-40);remember(partnerId(),'argument','You ignored her when she needed you');}return 'You put the phone down. This won\'t stay hidden for long.';}}]});return;}
   if(P2.st==='keeping'&&d>=P2.show)scandal('showing');}
@@ -3310,7 +3370,7 @@ function clinicTrip(){const P2=S.preg;if(!P2||P2.st!=='clinic')return;if(!spend(
 /* ---- the plug: delivery through the fence ---- */
 function plugOrder(qty){if(!mature())return;if(S.plug&&S.plug.st!=='done')return toast('Plug','"Your last order never finish. Patience."');const cost=3000*qty;if(!spend(cost,'Paid Deji (the plug)'))return toast('Not enough money','That is '+naira(cost)+'.','bad');
   S.plug={st:'coming',at:S.t+ri(60,140),qty};msg('plug','Alert received ✅ I go reach your school soon. I go text you when I dey the fence.');}
-function plugTick(){const p=S.plug;if(!p||S.over)return;if(p.st==='coming'&&S.t>=p.at){p.st='waiting';p.until=S.t+40;msg('plug','I dey the broken fence behind Boys Hostel now. Come pick am sharp sharp, I no go wait pass 40 mins o.');toast('Deji is at the fence','Go to the Broken Fence in the next 40 minutes.');}
+function plugTick(){const p=S.plug;if(!p||S.over)return;if(p.st==='coming'&&S.t>=p.at){p.st='waiting';p.until=S.t+40;msg('plug','I dey the back fence behind Boys Hostel now. Come pick am sharp sharp, I no go wait pass 40 mins o.');toast('Deji is at the fence','Go to the Back Fence in the next 40 minutes.');}
   if(p.st==='waiting'&&S.t>p.until){p.st='done';msg('plug','I don comot. Your money don go o. Next time be fast.');}}
 function plugPickup(){const p=S.plug;if(!p||p.st!=='waiting')return;const go=()=>{if(!S.plug||S.plug.st!=='waiting')return;const h=minOf(S.t)/60;let c=0.14+(h>=6&&h<19?0.06:0)+(guards.some(g=>!g.hidden&&Math.hypot(g.x-P.x,g.z-P.z)<40)?0.15:0)-S.skills.street*0.03;
     if(chance(clamp(c,0.06,0.45))){p.st='done';setTimeout(()=>caughtWithPackage(),250);return;}p.st='done';S.inv.loud=(S.inv.loud||0)+p.qty;S.skills.street+=0.05;toast('Package collected','A black nylon flies over the wall and lands at your feet. Into your pocket.','good');};
@@ -3420,7 +3480,7 @@ function extraProfile(k,b){runHooks(HOOKS.contact,k,b);if(k==='amina'&&mature())
   else if(BOYS.includes(k)||k==='amina'||k==='rep')b.append(prow(pbtn('Invite to your room',()=>inviteToRoom(k),MATES.includes(k)?'Already your roommate':null)));}
 function extraPhone(b,T){const v=phoneView;{const n=NETX();if(n&&n.phone(v,b,T))return true;}if(HOOKS.views[v]){try{if(HOOKS.views[v](b,T)!==false)return true;}catch(e){console.error(e);}}
   if(v==='plug'){T.textContent='Deji (the plug)';if(!mature()){b.append(el('div','note','Not available on this account.'));return true;}
-    b.append(el('div','bgcard','<b>Deji · outside school</b><div class="note">Pay first. He drops the package over the broken fence behind the Boys Hostel and texts you. You have 40 minutes to pick it up. If Officer Tiger catches you: flogging, bribe, or the panel.</div>'));
+    b.append(el('div','bgcard','<b>Deji · outside school</b><div class="note">Pay first. He drops the package over the back fence behind the Boys Hostel and texts you. You have 40 minutes to pick it up. If Officer Tiger catches you: flogging, bribe, or the panel.</div>'));
     const p=S.plug;if(p&&p.st!=='done')b.append(el('div','note',p.st==='coming'?'Your order is on the way.':'Deji is at the fence NOW. '+fmtDur(Math.max(0,p.until-S.t))+' left.'));
     b.append(prow(pbtn('Order 1 wrap of loud · ₦3,000',()=>plugOrder(1),p&&p.st!=='done'?'Order in progress':null),pbtn('Order 3 · ₦9,000',()=>plugOrder(3),p&&p.st!=='done'?'Order in progress':null)));
     if(p&&p.st==='waiting')b.append(prow(pbtn('Go to the fence now',()=>{closePhone();plugPickup();})));
@@ -4264,7 +4324,7 @@ function efccArrest(ev){const Y=yh();S.inv.laptop=false;Y.on=false;Y.quit=true;c
 HOOKS.migrate.push(st=>{if(st.yahoo&&st.yahoo.nights==null)st.yahoo.nights=0;});
 /* ---- src/bandits.js ---- */
 /* ================= BANDITS: the raid, the kidnapping, the camp, the release =================
-   Armed men come through the broken fence at night in two pickups. If they take you, you see it:
+   Armed men come through the back fence at night in two pickups. If they take you, you see it:
    dragged to the trucks with other students, driven into the bush, held at a camp until the ransom
    is paid (by family, friends, other players or a top-up) or you escape. Kidnapped players can see
    each other at the camp. */
@@ -4282,7 +4342,7 @@ HOOKS.raid=forced=>{if(CS.on)return;if(UI.dlg){UI.dlgQ=[];UI.dlg=false;$('#dlgWr
 async function raidScene(){const hostel=LOCS[homeId()]&&LOCS[homeId()].zone!=='off'?LOCS.boys:LOCS.boys;const wasInside=S.inside;
   csStart();document.body.classList.add('raid');setTimeout(()=>document.body.classList.remove('raid'),12000);setCarLights(true);
   if(S.inside){const id=S.inside;await new Promise(r=>fadeThen(()=>{const I=getInt(id);I.g.visible=false;outdoor.visible=true;outdoor.add(player);player.visible=false;S.raidFrom=id;S.inside=null;scene.fog.near=170;scene.fog.far=430;r();}));}
-  // two pickups outside the broken fence
+  // two pickups outside the back fence
   const trucks=[buildVehicle('pickup',0x2a2a26),buildVehicle('pickup',0x3a3226)];trucks.forEach((V,i)=>{V.g.position.set(-88+i*6,0,120+i*2);V.g.rotation.y=Math.PI;});W.raidTrucks=trucks;
   const B=[];for(let i=0;i<6;i++)B.push(bandit(-85+rnd(-1,1),110+i*0.8));W.raidB=B;
   const fenceIn={x:-85,z:101.2};const targets=[hostel.door,{x:hostel.door.x+4,z:hostel.door.z+8},{x:-60,z:78},{x:-40,z:86},{x:-70,z:90},{x:hostel.door.x+2,z:hostel.door.z-6}];
@@ -4323,7 +4383,7 @@ async function captureScene(){csStart();setCarLights(true);const room=S.inside;
   const gs=[bandit(fp.x-1.4,fp.z-1.2),bandit(fp.x+2.5,fp.z+2.2),bandit(fp.x,fp.z+3.2)];gs.forEach(a=>a.sp=3.9);
   const fenceIn={x:-85,z:101.2};const route=navPath(fp,fenceIn)||[fenceIn];const tail=[{x:-85,z:104.8},{x:-85,z:109}];
   [me,...caps,...gs].forEach((a,i)=>{a.path=route.concat(tail).map(p=>({x:p.x+(i%3-1)*0.8,z:p.z+Math.floor(i/3)*0.9}));a.i=0;});
-  csShot(()=>new THREE.Vector3(me.x+8,6.5,me.z-9),()=>new THREE.Vector3(me.x,1.4,me.z+2),1.5);CS.camInit=false;csCaption('Taken','They march you towards the broken fence');
+  csShot(()=>new THREE.Vector3(me.x+8,6.5,me.z-9),()=>new THREE.Vector3(me.x,1.4,me.z+2),1.5);CS.camInit=false;csCaption('Taken','They march you towards the back fence');
   const shots=setInterval(()=>{if(!CS.on){clearInterval(shots);return;}gunshot(pick(gs));},2200);
   await csUntil(()=>csArrived(me),26000);clearInterval(shots);csCaption(null);
   // into the back of the pickup
@@ -4428,16 +4488,41 @@ function hmParse(buf){const dv=new DataView(buf);if(dv.getUint32(0,true)!==0x314
 /* ---------- materials (shared; skinning on) ---------- */
 function hmMat(key,make){return HMS.mats[key]||(HMS.mats[key]=make());}
 function hmSkinMat(){return hmMat('skin',()=>new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.52,metalness:0,skinning:true}));}
-function hmCloth(c,r,tex){const k='c'+c+'_'+r+(tex?'_t':'');return hmMat(k,()=>{const m=new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:0,skinning:true});
+/* fabric: a small tileable weave / knit / grain pattern, mapped in the garment's own rest-pose space (so it sticks to
+   the cloth while the body moves) with three planar projections; it tints the colour slightly and bumps the lighting */
+function hmFabTex(kind){const C=HMS.fab||(HMS.fab={});if(C[kind])return C[kind];const n=256,cv=document.createElement('canvas');cv.width=cv.height=n;const g=cv.getContext('2d'),im=g.createImageData(n,n);
+  let sd=kind.length*977+13;const R=()=>(sd=(sd*16807)%2147483647)/2147483647;const G=16,grid=new Float32Array(G*G).map(()=>R());
+  const vn=(u,v)=>{const x=u*G,y=v*G,i=Math.floor(x),j=Math.floor(y),fx=x-i,fy=y-j,a=grid[(j%G)*G+i%G],b=grid[(j%G)*G+(i+1)%G],c=grid[((j+1)%G)*G+i%G],d=grid[((j+1)%G)*G+(i+1)%G],sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);return a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy;};
+  const T=Math.PI*2;
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){const u=x/n,v=y/n,no=vn(u,v);let h;
+    if(kind==='twill')h=0.5+0.32*Math.sin(T*(u+v)*12)+0.08*Math.sin(T*u*48)+0.18*(no-0.5);
+    else if(kind==='knit')h=0.5+0.38*Math.abs(Math.sin(Math.PI*u*10))*(0.75+0.25*Math.sin(T*v*20))-0.15+0.15*(no-0.5);
+    else if(kind==='leather')h=0.55+0.35*(vn(u*3%1,v*3%1)-0.5)+0.2*(no-0.5);
+    else h=0.55+0.22*Math.sin(T*u*16+1.3*Math.sin(T*v*24))+0.12*Math.sin(T*v*24)+0.15*(no-0.5);
+    const b=Math.max(0,Math.min(255,h*255));const i=(y*n+x)*4;im.data[i]=im.data[i+1]=im.data[i+2]=b;im.data[i+3]=255;}
+  g.putImageData(im,0,0);const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;return C[kind]=t;}
+function hmFabric(m,kind){const sc={twill:0.75,knit:0.55,leather:0.9,cotton:0.6}[kind]||0.7,amt={twill:0.12,knit:0.1,leather:0.08,cotton:0.05}[kind]||0.08,bump={twill:0.5,knit:0.55,leather:0.35,cotton:0.22}[kind]||0.45;
+  m.extensions={derivatives:true};m.customProgramCacheKey=()=>'fab'+kind;
+  m.onBeforeCompile=sh=>{sh.uniforms.uFab={value:hmFabTex(kind)};sh.uniforms.uFabS={value:sc};sh.uniforms.uFabA={value:amt};sh.uniforms.uFabB={value:bump*0.0};
+    sh.vertexShader='varying vec3 vHmP;\nvarying vec3 vHmN;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvHmP=position;vHmN=normal;');
+    sh.fragmentShader='uniform sampler2D uFab;\nuniform float uFabS,uFabA,uFabB;\nvarying vec3 vHmP;\nvarying vec3 vHmN;\n'+sh.fragmentShader
+      .replace('#include <map_fragment>','#include <map_fragment>\nvec3 fw=pow(abs(normalize(vHmN)),vec3(4.0));fw/=(fw.x+fw.y+fw.z);vec3 fp=vHmP*uFabS;\nfloat fabH=texture2D(uFab,fp.yz).r*fw.x+texture2D(uFab,fp.xz).r*fw.y+texture2D(uFab,fp.xy).r*fw.z;\nfloat fabW=0.94+0.06*sin(vHmP.y*2.3+vHmP.x*1.7)*sin(vHmP.z*3.1);\ndiffuseColor.rgb*=mix(1.0-uFabA,1.0+uFabA*0.5,fabH)*fabW;')
+      .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=clamp(roughnessFactor*mix(1.06,0.92,fabH),0.0,1.0);')
+      .replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\n{vec3 dpx=dFdx(-vViewPosition),dpy=dFdy(-vViewPosition);float dhx=dFdx(fabH),dhy=dFdy(fabH);vec3 r1=cross(dpy,normal),r2=cross(normal,dpx);float det=dot(dpx,r1);vec3 grd=sign(det)*(dhx*r1+dhy*r2);float fade=1.0-smoothstep(1.5,5.0,length(vViewPosition));normal=normalize(abs(det)*normal-grd*uFabB*fade);}');};
+  return m;}
+function hmCloth(c,r,tex,fab){const k='c'+c+'_'+r+(tex?'_t':'')+(fab?'_'+fab:'');return hmMat(k,()=>{const m=new THREE.MeshStandardMaterial({color:c,roughness:r,metalness:0,skinning:true});if(fab)hmFabric(m,fab);
   if(tex){const src=ankaraM(c).map;m.map=src;m.color.setHex(0xffffff);}return m;});}
 /* photo skin and proxy textures (MakeHuman system assets, CC0) are applied when they arrive; until then the
    material shows the average skin colour, so nobody flashes white or black */
 const HM_SKINREF=0x573828;
 function hmTex(file,cb){const L=HMS.texL||(HMS.texL={});if(L[file]){if(L[file].t)cb(L[file].t);else L[file].q.push(cb);return;}
   const e=L[file]={t:null,q:[cb]};new THREE.TextureLoader().load((HMS.base||'/vendor/hm/')+file,t=>{t.encoding=THREE.sRGBEncoding;t.anisotropy=4;e.t=t;e.q.forEach(f=>{try{f(t);}catch(x){}});e.q=[];},undefined,()=>{});}
-function hmSkinTexMat(f){return hmMat('skinT'+(f?'f':'m'),()=>{const m=new THREE.MeshStandardMaterial({vertexColors:true,color:HM_SKINREF,roughness:0.5,metalness:0,skinning:true});
-  hmTex(f?'skin_f.jpg':'skin_m.jpg',t=>{m.map=t;m.color.setHex(0xffffff);m.needsUpdate=true;});return m;});}
-function hmProxyMat(file,tint){return hmMat('px'+file+'_'+tint,()=>{const m=new THREE.MeshStandardMaterial({color:tint,roughness:0.75,metalness:0,skinning:true,side:THREE.DoubleSide,alphaTest:0.45,transparent:false});
+function hmSkinTexMat(f){return hmMat('skinT'+(f?'f':'m'),()=>{const m=new THREE.MeshStandardMaterial({vertexColors:true,color:HM_SKINREF,roughness:0.5,metalness:0,skinning:true,morphTargets:true});
+  hmTex(f?'skin_f.jpg':'skin_m.jpg',t=>{m.map=t;m.color.setHex(0xffffff);m.needsUpdate=true;});
+  /* skin is not plastic: light scatters under it (warmer, softer shadows) and it shows a faint sheen at grazing angles */
+  m.onBeforeCompile=sh=>{sh.fragmentShader=sh.fragmentShader.replace('#include <lights_fragment_end>','#include <lights_fragment_end>\n{vec3 vd=normalize(vViewPosition);float fr=pow(1.0-clamp(dot(normal,vd),0.0,1.0),3.0);reflectedLight.indirectDiffuse+=diffuseColor.rgb*vec3(0.16,0.07,0.05);reflectedLight.indirectSpecular+=vec3(0.035,0.03,0.028)*fr;}');};
+  m.customProgramCacheKey=()=>'hmskin';return m;});}
+function hmProxyMat(file,tint,morph){return hmMat('px'+file+'_'+tint+(morph?'_m':''),()=>{const m=new THREE.MeshStandardMaterial({color:tint,roughness:0.75,metalness:0,skinning:true,side:THREE.DoubleSide,alphaTest:0.45,transparent:false,morphTargets:!!morph});
   m.visible=false;hmTex(file,t=>{m.map=t;m.visible=true;m.needsUpdate=true;});return m;});}
 function hmEyeMat(){return hmMat('eye',()=>new THREE.MeshStandardMaterial({map:HMS.eyeTex,roughness:0.18,metalness:0,skinning:true,alphaTest:0.5}));}
 
@@ -4454,6 +4539,17 @@ function hmSpec(o,seed){const r=n=>{const x=Math.sin(seed*91.7+n*12.9898)*43758.
     shirt:o.shirt!=null?o.shirt:0xdddddd,ankara:o.top==='ankara'||o.top==='kaftanA',pants:o.pants!=null?o.pants:0x23262e,
     skirt:!!o.skirt||o.top==='dress'||o.cassock||o.habit,dress:o.top==='dress',robe:!!(o.cassock||o.habit||o.top==='kaftan'||o.top==='kaftanA'),
     glasses:!!o.glasses,shoes:o.shoes||0x1d1a18,shoeStyle:o.shoeStyle||'shoes',hairStyle:o.hairStyle||(f?'puff':'low'),hairC:o.hairC||0x161010,hijab:o.hijab,mask:!!o.mask};}
+
+/* ---------- facial expression morphs (shared by everyone: one GPU copy per target) ---------- */
+const HM_EXPR=['x_blinkL','x_blinkR','x_smile','x_open','x_frown','x_browUp','x_browDn'];
+function hmBaseDelta(k){const C=HMS.mbase||(HMS.mbase={});if(C[k]!==undefined)return C[k];const D=HMS.d,ii=D['t_'+k+'_i'],dd=D['t_'+k+'_d'];if(!ii)return C[k]=null;
+  const a=new Float32Array(D.pos.length);for(let j=0;j<ii.length;j++){a[ii[j]*3]=dd[j*3]/4000;a[ii[j]*3+1]=dd[j*3+1]/4000;a[ii[j]*3+2]=dd[j*3+2]/4000;}return C[k]=a;}
+/* morph attributes for a mesh whose vertex k sits on base vertex map(k) (body) or on a weighted triangle of base vertices (proxies) */
+function hmMorphs(tag,n,fill){const C=HMS.mcache||(HMS.mcache={});if(C[tag])return C[tag];const out=[];
+  for(const k of HM_EXPR){const B=hmBaseDelta(k);if(!B)return C[tag]=null;const a=new Float32Array(n*3);fill(B,a);const at=new THREE.BufferAttribute(a,3);at.name=k;out.push(at);}return C[tag]=out;}
+function hmBodyMorphs(){const D=HMS.d,vid=D.bodyVid;return hmMorphs('body',vid.length,(B,a)=>{for(let k=0;k<vid.length;k++){const i=vid[k]*3;a[k*3]=B[i];a[k*3+1]=B[i+1];a[k*3+2]=B[i+2];}});}
+function hmProxyMorphs(name){const ref=HMS.d[name+'Ref'];if(!ref)return null;const n=ref.length/9;return hmMorphs(name,n,(B,a)=>{for(let k=0;k<n;k++){const r=ref.subarray(k*9,k*9+9);for(let c=0;c<3;c++)a[k*3+c]=B[r[0]*3+c]*r[3]+B[r[1]*3+c]*r[4]+B[r[2]*3+c]*r[5];}});}
+const withMorphs=(g,M)=>{if(!M)return;g.morphAttributes.position=M;g.morphTargetsRelative=true;};
 
 /* ---------- build one human ---------- */
 const _v1=new THREE.Vector3(),_v2=new THREE.Vector3();
@@ -4482,7 +4578,7 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   const mk=(pos,idx,J,Wt,extra)=>{const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setIndex(new THREE.BufferAttribute(idx,1));
     geo.setAttribute('skinIndex',new THREE.BufferAttribute(J,4));geo.setAttribute('skinWeight',new THREE.BufferAttribute(Wt,4,true));if(extra)extra(geo);return geo;};
   const skinned=(geo,mat,shadow=true)=>{const m=new THREE.SkinnedMesh(geo,mat);m.castShadow=shadow&&(typeof QH==='undefined'||QH);m.receiveShadow=true;g0.add(m);m.bind(skel);return m;};
-  const R=H.reg,meshes=[];const sstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
+  const R=H.reg,meshes=[],face={};const sstep=(a,b,x)=>{const t=Math.max(0,Math.min(1,(x-a)/(b-a)));return t*t*(3-2*t);};
   /* ---- clothing / hair are cut from skin-tight shells by smooth scalar fields s (>0 = covered, in dm) ---- */
   const dist=(a,b)=>X[a].distanceTo(X[b]),Lg={uarm:(dist('uarmL','farmL')+dist('uarmR','farmR'))/2,farm:(dist('farmL','handL')+dist('farmR','handR'))/2,thigh:(dist('thighL','shinL')+dist('thighR','shinR'))/2,shin:(dist('shinL','footL')+dist('shinR','footR'))/2};
   const waist=X.spine.y,waistTop=waist+0.42,eyeY=(X.eyeL.y+X.eyeR.y)/2,eyeZ=(X.eyeL.z+X.eyeR.z)/2,hcx=(X.eyeL.x+X.eyeR.x)/2,hcz=eyeZ-0.95;
@@ -4533,8 +4629,8 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
         let m=1;const y=bpos[i*3+1];{const x=bpos[i*3],z=bpos[i*3+2];for(const E of [X.eyeL,X.eyeR]){const d=Math.hypot(x-E.x,(y-E.y)*1.6,z-E.z);if(d<0.3&&z>E.z-0.05)m*=0.75+0.25*sstep(0.15,0.3,d);}}
         sc[k*3]=tr*m;sc[k*3+1]=tg*m;sc[k*3+2]=tb*m;}
       const si=[],S2=D.bodyIdxS;for(let k=0;k<S2.length;k+=3){const a=S2[k],b=S2[k+1],c=S2[k+2];if(hd[vid[a]]&&hd[vid[b]]&&hd[vid[c]])continue;si.push(a,b,c);}
-      const geo=mk(sp,Uint16Array.from(si),sj,sw,g=>{g.setAttribute('color',new THREE.BufferAttribute(sc,3));g.setAttribute('normal',new THREE.BufferAttribute(sn,3));g.setAttribute('uv',new THREE.BufferAttribute(D.bodyUV,2));});
-      meshes.push(skinned(geo,hmSkinTexMat(f)));}
+      const geo=mk(sp,Uint16Array.from(si),sj,sw,g=>{g.setAttribute('color',new THREE.BufferAttribute(sc,3));g.setAttribute('normal',new THREE.BufferAttribute(sn,3));g.setAttribute('uv',new THREE.BufferAttribute(D.bodyUV,2));withMorphs(g,hmBodyMorphs());});
+      const bm=skinned(geo,hmSkinTexMat(f));meshes.push(bm);face.body=bm;}
     else{const geo=mk(bpos,Uint16Array.from(idx),D.bodyJ,D.bodyW,g=>{g.setAttribute('color',new THREE.BufferAttribute(col,3));g.setAttribute('normal',bfull.getAttribute('normal'));});
     meshes.push(skinned(geo,hmSkinMat()));}}
   /* helper pools (subdivided once) */
@@ -4544,14 +4640,14 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
     let J=D[name+'J'],Wt=D[name+'W'];if(near&&name!=='hair'){/* move exactly like the skin underneath */J=new Uint8Array(n*4);Wt=new Uint8Array(n*4);for(let k=0;k<n;k++)for(let c=0;c<4;c++){J[k*4+c]=D.bodyJ[near[k]*4+c];Wt[k*4+c]=D.bodyW[near[k]*4+c];}}
     const geo=mk(pos,D[name+'Idx'],J,Wt);geo.computeVertexNormals();return{n,pos,nor:geo.getAttribute('normal').array,reg:D[name+'Reg'],t:D[name+'T'],idx:D[name+'Idx'],J,W:Wt};};
   const tg=pool('tights');let tuv=null;if(spec.ankara){tuv=new Float32Array(tg.n*2);for(let k=0;k<tg.n;k++){tuv[k*2]=(Math.atan2(tg.pos[k*3],tg.pos[k*3+2])/Math.PI+1)*2;tuv[k*2+1]=tg.pos[k*3+1]*0.32;}}
-  const topOff=spec.top==='hoodie'?0.15:0.075,TOPM=hmCloth(spec.shirt,0.88,spec.ankara),BOTM=hmCloth(spec.pants,0.86);
+  const topOff=spec.top==='hoodie'?0.15:0.075,TOPM=hmCloth(spec.shirt,0.88,spec.ankara,spec.top==='hoodie'?'knit':'cotton'),BOTM=hmCloth(spec.pants,0.86,false,'twill');
   if(window.__HMDBG)HMS.dbg={tg,sT:field(tg,topS),R,X,clavY,nkx,nkz,R0};
   clip(tg,field(tg,topS),topOff,TOPM,tuv);
   if(!spec.dress&&!(spec.skirt&&!spec.robe))clip(tg,field(tg,botS),0.045,BOTM);
-  clip(tg,field(tg,shoeS),spec.shoeStyle==='sneakers'?0.065:spec.shoeStyle==='slides'?0.03:0.045,hmCloth(spec.shoes,spec.shoeStyle==='sneakers'?0.7:0.4));
+  clip(tg,field(tg,shoeS),spec.shoeStyle==='sneakers'?0.065:spec.shoeStyle==='slides'?0.03:0.045,hmCloth(spec.shoes,spec.shoeStyle==='sneakers'?0.7:0.4,false,spec.shoeStyle==='sneakers'?'knit':'leather'));
   if(spec.skirt){const sk=pool('skirt');clip(sk,field(sk,(r,t,x,y,z)=>Math.min(y-skirtCut,(spec.dress||spec.robe?waistTop+0.15:waist+0.3)-y)),0.035,spec.dress||spec.robe?TOPM:BOTM,spec.ankara?(()=>{const u=new Float32Array(sk.n*2);for(let k=0;k<sk.n;k++){u[k*2]=(Math.atan2(sk.pos[k*3],sk.pos[k*3+2])/Math.PI+1)*2;u[k*2+1]=sk.pos[k*3+1]*0.32;}return u;})():null);}
   /* hair: a shell over the scalp with a smooth hairline */
-  const pxHair=spec.hijab||spec.mask?null:({afro:'afro01',natural:'afro01',braids:'braid01',ponytail:'ponytail01',bob:'bob01'})[spec.hairStyle]||null,pxOK=pxHair&&D['px_'+pxHair+'Ref'];
+  const pxHair=spec.hijab||spec.mask?null:({afro:'afro01',natural:'afro01',braids:'braid01',ponytail:'ponytail01',bob:'bob01',waves:'short02'})[spec.hairStyle]||null,pxOK=pxHair&&D['px_'+pxHair+'Ref'];
   const hs=pxOK?'low':spec.hairStyle;if(hs!=='bald'&&!spec.hijab&&!spec.mask){const th={low:0.045,waves:0.06,highfade:0.1,twists:0.24,locs:0.22,cornrows:0.06,braids:0.08,afro:0.75,natural:0.45,puff:0.07,bun:0.07,bob:0.12,ponytail:0.07}[hs]||0.06;
     const HM=hmMat('h'+spec.hairC,()=>new THREE.MeshStandardMaterial({color:spec.hairC,roughness:0.78,metalness:0,skinning:true}));const topY=X.headTop.y;
     clip(body,field(body,hairS),(i,s)=>{let o=0.012+th*sstep(0,hs==='afro'||hs==='natural'?0.7:0.22,s);if(hs==='highfade')o*=sstep(topY-1.5,topY-0.35,body.pos[i*3+1])*0.85+0.15;
@@ -4561,18 +4657,18 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   /* hijab: wraps the head, leaves the face open, drapes over the shoulders */
   if(spec.hijab){const fy=eyeY-0.25;const hjS=(r,t,x,y,z)=>{if(r===R.head||r===R.neck){if(z<eyeZ-0.75)return 0.6;return (Math.hypot((x-hcx)/0.6,(y-fy)/(y>fy?0.82:0.98))-1)*0.5;}
       if(r===R.torsoU||r===R.uarm||r===R.torsoL)return y-(clavY-(z<nkz?1.2:0.75));return -1;};
-    clip(body,field(body,hjS),(i,s)=>0.14+(body.reg[i]===R.head?0.1:0.24)*sstep(0,0.5,s),hmCloth(spec.hijab,0.9));}
+    clip(body,field(body,hjS),(i,s)=>0.14+(body.reg[i]===R.head?0.1:0.24)*sstep(0,0.5,s),hmCloth(spec.hijab,0.9,false,'cotton'));}
   /* balaclava */
   if(spec.mask){const mkS=(r,t,x,y,z)=>r===R.head||r===R.neck?Math.max(Math.abs(y-eyeY)-0.2,(eyeZ-0.55)-z):(r===R.torsoU?y-clavY:-1);
-    clip(body,field(body,mkS),0.04,hmCloth(0x141414,0.95));}
+    clip(body,field(body,mkS),0.04,hmCloth(0x141414,0.95,false,'knit'));}
   /* fitted proxies (hair styles, eyebrows, eyelashes) */
   const proxy=(name,mat,shadow)=>{const ref=D[name+'Ref'],sc=H.proxies&&H.proxies[name];if(!ref||!sc)return null;const n=ref.length/9,pos=new Float32Array(n*3);
     const ax=(q,c)=>q?Math.abs(P[q[0]*3+c]-P[q[1]*3+c])/q[2]:1,sx=ax(sc.x,0),sy=ax(sc.y,1),sz=ax(sc.z,2);
     for(let k=0;k<n;k++){const r=ref.subarray(k*9,k*9+9);for(let a=0;a<3;a++)pos[k*3+a]=P[r[0]*3+a]*r[3]+P[r[1]*3+a]*r[4]+P[r[2]*3+a]*r[5]+r[6+a]*[sx,sy,sz][a];}
-    const geo=mk(pos,D[name+'Idx'],D[name+'J'],D[name+'W'],g=>g.setAttribute('uv',new THREE.BufferAttribute(D[name+'UV'],2)));geo.computeVertexNormals();const m=skinned(geo,mat,shadow);meshes.push(m);return m;};
+    const geo=mk(pos,D[name+'Idx'],D[name+'J'],D[name+'W'],g=>{g.setAttribute('uv',new THREE.BufferAttribute(D[name+'UV'],2));if(mat.morphTargets)withMorphs(g,hmProxyMorphs(name));});geo.computeVertexNormals();const m=skinned(geo,mat,shadow);meshes.push(m);return m;};
   const hairTint=new THREE.Color(spec.hairC).lerp(_c1.setHex(0x3a2a20),0.35).multiplyScalar(2.2).getHex();
-  if(!spec.mask)proxy('px_brow',hmProxyMat('brow.png',0x9a8a80),false);
-  proxy('px_lash',hmProxyMat('lash.png',0xffffff),false);
+  if(!spec.mask)face.brow=proxy('px_brow',hmProxyMat('brow.png',0x9a8a80,true),false);
+  face.lash=proxy('px_lash',hmProxyMat('lash.png',0xffffff,true),false);
   if(pxOK)proxy('px_'+pxHair,hmProxyMat('hair_'+pxHair+'.png',hairTint),true);
   /* eyes */
   {const ref=D.eyeRef,n=ref.length/9,pos=new Float32Array(n*3),sc=H.eyeScale,V3=i=>[P[i*3],P[i*3+1],P[i*3+2]];
@@ -4589,7 +4685,7 @@ function hmBuild(spec){const t0=performance.now();const D=HMS.d,H=D.h;const P=ne
   const C={};['L','R'].forEach(s=>{const sg=side(s),T=new THREE.Vector3(sg,0,0);C['uarm'+s]=new THREE.Quaternion().setFromUnitVectors(_v1.copy(X['farm'+s]).sub(X['uarm'+s]).normalize(),T);
     C['farm'+s]=new THREE.Quaternion().setFromUnitVectors(_v1.copy(X['hand'+s]).sub(X['farm'+s]).normalize(),T);C['hand'+s]=C['farm'+s];});
   HMS.stats.built++;HMS.stats.ms=performance.now()-t0;
-  return{g:g0,bones:bn,skel,N,X,C,meshes};}
+  return{g:g0,bones:bn,skel,N,X,C,meshes,face};}
 const _c1=new THREE.Color(),_c2=new THREE.Color();
 
 /* ---------- attach to a sim: line the procedural joints up with the real skeleton ---------- */
@@ -4620,6 +4716,22 @@ function hmDetach(s){const ud=s.userData,H=ud.hm;if(!H)return;hmShow(s,false);H.
 
 /* ---------- pose transfer (called from pose()) ---------- */
 const _q1=new THREE.Quaternion(),_q2=new THREE.Quaternion(),HQ=[...Array(96)].map(()=>new THREE.Quaternion()),HQI=new THREE.Quaternion(),HE=new THREE.Euler(),_hv=new THREE.Vector3(),_ax=new THREE.Vector3(1,0,0);
+/* face: blinking, smiles, frowns, raised brows and lip shapes, driven by what the person is doing */
+const HM_HAPPY=/laugh|wave|dance|excited|celebrate|cheer|hug|selfie/,HM_SAD=/sad|cry|hungry|sick|tired|beg|kneel/;
+function hmFace(ud,H,dt){const F=H.face;if(!F||!F.body||!F.body.morphTargetInfluences)return;const st=ud.hmF||(ud.hmF={t:0,next:1+Math.random()*3,bl:0,v:[0,0,0,0,0,0,0],brow:0,browT:0});
+  const k=ud.pk||'',tt=ud.pt||0;st.t+=dt;
+  /* blink every 2-6 s (a quick 0.16 s close); eyes shut while asleep */
+  let blink=0;if(/lie|sleep/.test(k))blink=1;else{if(st.t>st.next){st.bl=0.0001;st.next=st.t+2+Math.random()*4;}if(st.bl>0){st.bl+=dt;blink=Math.sin(Math.min(1,st.bl/0.16)*Math.PI);if(st.bl>0.16)st.bl=0;}}
+  const talking=/talk|phone/.test(k)||ud.speaking;
+  let smile=0.1,frown=0,open=0,browUp=0,browDn=0;
+  if(HM_HAPPY.test(k))smile=0.85;else if(HM_SAD.test(k)){frown=0.6;browDn=0.3;smile=0;}
+  else if(talking){smile=0.25+0.15*Math.sin(tt*0.7);open=Math.max(0,0.06+0.16*Math.sin(tt*11.3)*Math.sin(tt*2.9+1));
+    if(st.t>st.browT){st.brow=Math.random()<0.45?0.6:0;st.browT=st.t+0.6+Math.random()*1.4;}browUp=st.brow;}
+  else if(/shoot|fight|angry|guard/.test(k)){browDn=0.7;smile=0;}
+  if(k==='laugh')open=0.12+0.08*Math.abs(Math.sin(tt*6));
+  const want=[blink,blink,smile,open,frown,browUp,browDn],v=st.v,r=Math.min(1,dt*10);
+  for(let i=0;i<7;i++)v[i]+=(want[i]-v[i])*(i<2?1:r);
+  [F.body,F.brow,F.lash].forEach(m=>{if(m&&m.morphTargetInfluences)for(let i=0;i<7;i++)m.morphTargetInfluences[i]=v[i];});}
 function hmPose(s,dt){const ud=s.userData,H=ud.hm;if(!H||!ud.hmOn)return;dt=dt||0.016;const J=ud.J,b=H.bones,N=H.N,W={};let qi=0;const q=()=>HQ[qi++].identity();
   const qT=q().setFromEuler(J.torso.rotation),qHl=q().setFromEuler(J.hd.rotation);
   /* look at someone: the head (and a little of the neck) turns toward ud.lookAt */
@@ -4633,6 +4745,7 @@ function hmPose(s,dt){const ud=s.userData,H=ud.hm;if(!H||!ud.hmOn)return;dt=dt||
   /* lips: the jaw moves while talking or laughing */
   {const k=ud.pk||'',tt=ud.pt||0;let open=0;if(/talk/.test(k)||ud.speaking)open=Math.max(0,0.06+0.09*Math.sin(tt*9.3)*Math.sin(tt*3.1+1));else if(k==='laugh')open=0.12+0.06*Math.abs(Math.sin(tt*6));else if(k==='yawn')open=0.32;
     ud.jawO=(ud.jawO||0)+(open-(ud.jawO||0))*Math.min(1,dt*14);W.jaw=ud.jawO>0.004?q().copy(W.head).multiply(q().setFromAxisAngle(_ax,ud.jawO)):W.head;}
+  hmFace(ud,H,dt);
   for(const ps of ['L','R']){const k=H.map[ps];const qS=q().copy(qT).multiply(q().setFromEuler(J['sh'+ps].rotation));const qE=q().copy(qS).multiply(q().setFromEuler(J['el'+ps].rotation));
     W['clav'+k]=q().copy(qT).multiply(q().slerp(q().setFromEuler(J['sh'+ps].rotation),0.12));
     W['uarm'+k]=q().copy(qS).multiply(N['uarm'+k]);W['farm'+k]=q().copy(qE).multiply(N['farm'+k]);W['hand'+k]=W['farm'+k];
@@ -4778,6 +4891,193 @@ HOOKS.migrate.push(st=>{if(!st.garage)st.garage=[];});
 HOOKS.boot.push(()=>{try{garageRefresh();}catch(e){}});
 setTimeout(()=>{try{if(S)garageRefresh();}catch(e){}},1500);
 if(window.__QA)window.__HOME={villaActs,buyHouse,garageActs,stashCar,dealerActs:()=>dealerActs(),giveCar};
+/* ---- src/needs2.js ---- */
+/* ================= SOCIAL and BLADDER needs =================
+   Social drops slowly when you are alone and rises when you talk to people, are around others, chat on
+   your phone, eat with family or go out. Bladder drops all day (faster after eating or drinking); use any
+   toilet (inside any building) before it runs out, or there is an accident.
+   Tap any need bar in the top bar to see what restores it. */
+NEEDS.push(['social','Social','#c98ad9'],['bladder','Bladder','#7fc4c4']);
+$('#needs').innerHTML=NEEDS.map(([k,l])=>'<div class="need" data-need="'+k+'"><div class="v">'+l+'<i class="num" id="nv_'+k+'"></i></div><div class="bar"><div id="nb_'+k+'"></div></div></div>').join('');
+HOOKS.newState.push(st=>{st.needs.social=70;st.needs.bladder=85;});
+HOOKS.migrate.push(st=>{if(st.needs){if(st.needs.social==null)st.needs.social=70;if(st.needs.bladder==null)st.needs.bladder=85;}});
+
+/* eating and drinking fill the bladder */
+{const _N=N;N=function(k,v){_N(k,v);if(k==='food'&&v>0&&S.needs.bladder!=null)_N('bladder',-v*0.3);};}
+
+/* talking to a person (any dialog with someone) lifts social, at most once an hour per person */
+{const _d=dialog;dialog=function(d){try{if(S&&d&&d.who&&d.who!=='me'&&PEOPLE[d.who]&&S.needs.social!=null){const k='soc_'+d.who;S.flags.soc=S.flags.soc||{};
+  if(!S.flags.soc[k]||S.t-S.flags.soc[k]>60){S.flags.soc[k]=S.t;N('social',6);}}}catch(e){}return _d(d);};}
+
+const SOCIAL_ACT=/party|date|chat|gist|hang|dad|mum|mass|lecture|dance|game|snooker|football|eating at|with/i;
+HOOKS.minute.push(m=>{if(!S||S.over||S.needs.social==null)return;const asleep=ACT&&ACT.sleep;
+  /* bladder */
+  N('bladder',asleep?-0.04:-0.09);
+  if(S.needs.bladder<=0&&!(ACT&&/toilet/i.test(ACT.label))){N('bladder',100);N('hygiene',-45);addMoodlet('Had an accident',-18,600);setMood('Embarrassed',300);
+    toast('Accident','You didn\'t make it to a toilet in time. Go and have a bath.','bad');}
+  else if(S.needs.bladder<18&&m%30===0&&!asleep)toast('Bladder','You really need the toilet. Tap the Bladder bar.','bad');
+  /* social */
+  let s=asleep?-0.006:-0.028;
+  if(ACT&&!asleep&&SOCIAL_ACT.test(ACT.label))s+=0.22;
+  if(UI.phone&&phoneView==='thread')s+=0.12;
+  if(S.inside){const I=IW[S.inside];if(I&&I.sims.some(r=>r.g.visible))s+=0.05;}
+  else{let c=0;for(const n of npcs){if(n.hidden)continue;if(Math.hypot(n.x-P.x,n.z-P.z)<7&&++c>=3)break;}s+=c*0.025;}
+  N('social',s);
+  if(m%60===0){if(S.needs.social<20)addMoodlet('Lonely',-8,90);else if(S.needs.social>80)addMoodlet('Well connected',5,90);}});
+
+/* tap a need bar: what restores it, with a shortcut for the toilet */
+const NEED_TIPS={energy:'Sleep in your bed, nap, or rest. Coffee only hides it.',food:'Eat at a cafe, buka, Mama Put, or cook at home. Garri works in a pinch.',hygiene:'Bath at your hostel, lodge or house. Sweat and accidents drop it.',
+  fun:'Play games, watch TV, go to the Student Centre, parties, football.',stress:'Rest, pray at the chapel, have fun. Deadlines and debt raise it.',health:'Eat well, sleep, see the nurse at the Health Centre.',
+  social:'Talk to people, sit with roommates, chat in Messages, eat with family, go to parties or Mass.',bladder:'Use a toilet. Every building has one: tap below when you are inside.'};
+function toiletAct(){if(!S.inside){const best=Object.values(LOCS).filter(L=>L.inside&&!(L.zone==='off'&&L.own&&S.ownHouse!==L.id)).sort((a,b)=>Math.hypot(a.door.x-P.x,a.door.z-P.z)-Math.hypot(b.door.x-P.x,b.door.z-P.z))[0];
+    if(best){toast('Toilet','Heading to '+fx(best.name)+'.');goTo(best.id);}return;}
+  if(ACT)stopAction(true);startAction('Using the toilet',5,{where:S.inside,hide:true,per:()=>N('bladder',22),done:()=>{N('bladder',100);N('hygiene',-1);}});}
+$('#needs').addEventListener('click',e=>{const d=e.target.closest('.need');if(!d||!S)return;const k=d.dataset.need;const n=NEEDS.find(x=>x[0]===k);if(!n)return;
+  const wrap=el('div');wrap.style.display='grid';wrap.style.gap='8px';wrap.append(el('div','note',NEED_TIPS[k]||''));
+  if(k==='bladder'){const b=el('button','opt','<div class="l"><b>'+(S.inside?'Use the toilet':'Find the nearest toilet')+'</b><span>'+(S.inside?'5 minutes':'Walks you to the closest building')+'</span></div>');b.onclick=()=>{closeSheet();toiletAct();};wrap.append(b);}
+  openSheet(n[1]+' · '+Math.round(S.needs[k])+'%',k==='stress'?'Lower is better':'Higher is better',wrap);});
+{const st=document.createElement('style');st.textContent='.needs{grid-template-columns:repeat(8,1fr)}.need{cursor:pointer}@media (max-width:480px){.needs{grid-template-columns:repeat(4,1fr)}}';document.head.appendChild(st);}
+/* ---- src/buildmode.js ---- */
+/* ================= DECORATE (build / buy mode) =================
+   In a home that is yours (a rented lodge or the duplex you bought) a "Decorate" button appears.
+   Buy furniture from the catalogue, tap the floor to position it, rotate, place. Placed furniture can be
+   moved or sold back (half price). Most pieces do something: sit, sleep, watch TV, play, read, snack.
+   Saved per home in S.decor. */
+const DECOR=[
+  {k:'sofa',n:'Three-seat sofa',p:45000,c:'Living',w:3.2,d:1.1,fx:'sit'},
+  {k:'arm',n:'Armchair',p:22000,c:'Living',w:1.2,d:1.1,fx:'sit'},
+  {k:'coffee',n:'Coffee table',p:12000,c:'Living',w:1.6,d:0.9},
+  {k:'tv',n:'Flat-screen TV on a stand',p:95000,c:'Living',w:2.4,d:0.6,fx:'tv'},
+  {k:'ps',n:'Game console & TV',p:250000,c:'Living',w:2.4,d:0.6,fx:'game'},
+  {k:'speaker',n:'Sound system',p:60000,c:'Living',w:1.4,d:0.6,fx:'music'},
+  {k:'rug',n:'Big rug',p:15000,c:'Decor',w:3,d:2,flat:true},
+  {k:'plant',n:'Potted plant',p:6000,c:'Decor',w:0.7,d:0.7},
+  {k:'lamp',n:'Floor lamp',p:9000,c:'Decor',w:0.6,d:0.6},
+  {k:'shelf',n:'Bookshelf',p:18000,c:'Study',w:1.6,d:0.5,fx:'read'},
+  {k:'desk',n:'Study desk & chair',p:30000,c:'Study',w:1.8,d:0.9,fx:'study'},
+  {k:'dining',n:'Dining set (4 chairs)',p:38000,c:'Kitchen',w:2.6,d:2.2,fx:'eat'},
+  {k:'fridge',n:'Fridge',p:120000,c:'Kitchen',w:0.9,d:0.8,fx:'snack'},
+  {k:'bed',n:'Double bed',p:85000,c:'Bedroom',w:2.2,d:2.6,fx:'sleep'},
+  {k:'wardrobe',n:'Wardrobe',p:40000,c:'Bedroom',w:1.8,d:0.7}];
+const DECOR_BY=Object.fromEntries(DECOR.map(d=>[d.k,d]));
+const WOOD=0x6b4a2e,DARK=0x2b2b2b;
+function decorMesh(k,col){const g=new THREE.Group(),B=(c,sx,sy,sz,x,y,z,sh)=>part(G.box,c,sx,sy,sz,x,y,z,g,sh!==false);const cl=col||0x3d5a8a;
+  switch(k){
+    case 'sofa':B(cl,3.2,0.5,1.1,0,0.35,0);B(cl,3.2,0.8,0.28,0,0.9,-0.42);B(cl,0.28,0.65,1.1,-1.46,0.55,0);B(cl,0.28,0.65,1.1,1.46,0.55,0);[-0.8,0.8].forEach(x=>B(0xe3b04b,0.6,0.35,0.14,x,0.95,-0.22,false));break;
+    case 'arm':B(cl,1.2,0.5,1.1,0,0.35,0);B(cl,1.2,0.8,0.28,0,0.9,-0.42);B(cl,0.22,0.65,1.1,-0.5,0.55,0);B(cl,0.22,0.65,1.1,0.5,0.55,0);break;
+    case 'coffee':B(WOOD,1.6,0.08,0.9,0,0.5,0);[[-0.7,-0.35],[0.7,-0.35],[-0.7,0.35],[0.7,0.35]].forEach(([x,z])=>B(0x4a3220,0.07,0.5,0.07,x,0.25,z));B(0xd9562b,0.25,0.18,0.25,0.3,0.63,0,false);break;
+    case 'tv':case 'ps':{B(WOOD,2.4,0.55,0.6,0,0.28,0);B(0x111111,2.1,1.2,0.08,0,1.25,-0.15);const scr=part(G.box,0x223344,1.95,1.05,0.02,0,1.25,-0.1,g,false);scr.material=new THREE.MeshLambertMaterial({color:0x223344,emissive:k==='ps'?0x3a2a7a:0x2a6a9a,emissiveIntensity:0.8});
+      if(k==='ps'){B(0xf2f2f2,0.35,0.08,0.28,-0.6,0.6,0.05);B(0x111111,0.2,0.05,0.12,0.4,0.58,0.15);}break;}
+    case 'speaker':B(DARK,0.45,1.1,0.5,-0.45,0.55,0);B(DARK,0.45,1.1,0.5,0.45,0.55,0);[-0.45,0.45].forEach(x=>{const c=part(G.cyl,0x555555,0.16,0.04,0.16,x,0.75,0.26,g,false);c.rotation.x=Math.PI/2;});break;
+    case 'rug':B(cl===0x3d5a8a?0x8a2b2b:cl,3,0.03,2,0,0.02,0,false);B(0xe3b04b,2.6,0.035,1.6,0,0.025,0,false);B(cl===0x3d5a8a?0x8a2b2b:cl,2.2,0.04,1.2,0,0.03,0,false);break;
+    case 'plant':B(0xb5651d,0.5,0.5,0.5,0,0.25,0);for(let i=0;i<6;i++){const l=part(G.sphLo,i%2?0x2f8a57:0x3f6b33,0.35,0.5,0.35,Math.cos(i)*0.18,0.85+i*0.06,Math.sin(i)*0.18,g);}break;
+    case 'lamp':B(DARK,0.4,0.06,0.4,0,0.03,0);B(DARK,0.06,1.7,0.06,0,0.88,0);{const sh=part(G.cyl,0xf2e6c8,0.32,0.4,0.32,0,1.8,0,g,false);sh.material=new THREE.MeshLambertMaterial({color:0xf2e6c8,emissive:0xffd28a,emissiveIntensity:0.6});}break;
+    case 'shelf':B(WOOD,1.6,2.2,0.45,0,1.1,0);for(let s=0;s<4;s++)for(let b=0;b<7;b++)B([0xd9562b,0x2b6fd9,0x2f8a57,0xe3b04b,0x7a2331][(s+b)%5],0.14,0.38,0.32,-0.6+b*0.2,0.38+s*0.5,0.08,false);break;
+    case 'desk':B(WOOD,1.8,0.08,0.9,0,1.1,0);[[-0.8,-0.38],[0.8,-0.38],[-0.8,0.38],[0.8,0.38]].forEach(([x,z])=>B(0x4a3220,0.07,1.1,0.07,x,0.55,z));B(DARK,0.55,0.08,0.55,0,0.6,0.75);B(DARK,0.55,0.6,0.08,0,0.95,1.0);B(0x222222,0.6,0.4,0.04,0.2,1.35,-0.2);break;
+    case 'dining':B(WOOD,1.8,0.08,1.1,0,1.05,0);[[-0.8,-0.45],[0.8,-0.45],[-0.8,0.45],[0.8,0.45]].forEach(([x,z])=>B(0x4a3220,0.08,1.05,0.08,x,0.52,z));
+      [[-0.5,-0.95,0],[0.5,-0.95,0],[-0.5,0.95,Math.PI],[0.5,0.95,Math.PI]].forEach(([x,z,r])=>{const c=new THREE.Group();c.position.set(x,0,z);c.rotation.y=r;g.add(c);part(G.box,WOOD,0.5,0.06,0.5,0,0.62,0,c);part(G.box,WOOD,0.5,0.6,0.06,0,0.92,-0.22,c);[[-0.2,-0.2],[0.2,-0.2],[-0.2,0.2],[0.2,0.2]].forEach(([a,b])=>part(G.box,0x4a3220,0.05,0.62,0.05,a,0.31,b,c));});break;
+    case 'fridge':B(0xe8e8e8,0.9,2.1,0.8,0,1.05,0);B(0xb8b8b8,0.04,0.5,0.04,0.35,1.4,0.41,false);B(0x999999,0.86,0.02,0.02,0,1.3,0.41,false);break;
+    case 'bed':B(WOOD,2.2,0.5,2.6,0,0.25,0);B(0xf2efe6,2.05,0.28,2.45,0,0.62,0.02,false);B(cl,2.1,0.1,1.6,0,0.8,0.45,false);[-0.5,0.5].forEach(x=>B(0xffffff,0.8,0.18,0.45,x,0.85,-0.85,false));B(WOOD,2.2,1.3,0.12,0,0.65,-1.28);break;
+    case 'wardrobe':B(WOOD,1.8,2.4,0.7,0,1.2,0);B(0x4a3220,0.02,2.2,0.02,0,1.2,0.36,false);[-0.12,0.12].forEach(x=>B(0xe3b04b,0.04,0.25,0.04,x,1.25,0.37,false));break;}
+  return g;}
+
+const BM={on:false};
+function myHomeHere(){return S&&S.inside&&(S.inside===S.home||S.inside===S.ownHouse)&&S.inside!=='boys'&&S.inside!=='girls';}
+function decorList(id){S.decor=S.decor||{};return S.decor[id]=S.decor[id]||[];}
+/* (re)build the placed furniture of a home interior */
+function decorBuild(I){if(I.decorObjs){I.decorObjs.forEach(o=>{if(o.g.parent)o.g.parent.remove(o.g);const pi=I.pick.indexOf(o.g);if(pi>=0)I.pick.splice(pi,1);const oi=I.objs.indexOf(o.def);if(oi>=0)I.objs.splice(oi,1);
+    const li=I.labels.findIndex(l=>l.def===o.def);if(li>=0){I.labels[li].el.remove();I.labels.splice(li,1);}});}
+  I.decorObjs=[];const L=(S.decor||{})[I.id];if(!L||!L.length){I.nav=null;return;}
+  L.forEach((it,i)=>{const D=DECOR_BY[it.k];if(!D)return;const g=decorMesh(it.k,it.col);g.position.set(it.x,0,it.z);g.rotation.y=it.r||0;I.g.add(g);
+    const fx=Math.sin(it.r||0),fz=Math.cos(it.r||0),sp={x:it.x+fx*(D.d/2+0.7),z:it.z+fz*(D.d/2+0.7)};
+    const def=addObj(I,g,{id:'decor'+i,name:D.n.replace(/ \(.*\)| & .*| on a stand/,''),ly:D.flat?0.6:2.6,spot:sp,label:!D.flat,acts:()=>decorActs(I,it,D,sp)});I.decorObjs.push({g,def});});
+  I.nav=null;}
+function decorActs(I,it,D,sp){const id=I.id,r=it.r||0,seat={x:it.x+Math.sin(r)*0.1,y:0.05,z:it.z+Math.cos(r)*0.1,r,pose:'sit'},stand={x:sp.x,y:0,z:sp.z,r:r+Math.PI,pose:'stand'};const L=[];
+  switch(D.fx){
+    case 'sit':L.push(A('Sit and relax','30m · less stress',()=>startAction('Relaxing',30,{where:id,place:seat,per:()=>{N('stress',-0.25);N('fun',0.15);N('energy',0.03);}})));break;
+    case 'tv':L.push(A('Watch TV','1h',()=>startAction('Watching TV',60,{where:id,place:Object.assign({},stand,{pose:'cross'}),per:()=>{N('fun',0.6);N('stress',-0.15);}})));break;
+    case 'game':L.push(A('Play games','1h · FIFA with whoever is around',()=>startAction('Playing games',60,{where:id,place:Object.assign({},stand,{pose:'game'}),per:()=>{N('fun',0.85);N('stress',-0.2);N('social',0.1);}})));break;
+    case 'music':L.push(A('Play music and dance','30m',()=>startAction('Dancing',30,{where:id,place:Object.assign({},stand,{pose:'dance'}),per:()=>{N('fun',0.7);N('energy',-0.08);}})));break;
+    case 'read':L.push(A('Read a book','1h · a little smarter',()=>startAction('Reading',60,{where:id,place:Object.assign({},stand,{pose:'read'}),per:()=>N('fun',0.1),done:()=>{addStudy(0.7);S.skills.academic+=0.03;}})));break;
+    case 'study':L.push(A('Study','1h 30m · quiet desk',()=>startAction('Studying',90,{where:id,place:{x:it.x+Math.sin(r)*0.75,y:0,z:it.z+Math.cos(r)*0.75,r:r+Math.PI,pose:'read'},per:()=>N('energy',-0.05),done:()=>{addStudy(1.25);S.skills.academic+=0.04;}})));break;
+    case 'eat':L.push(A('Cook and eat a proper meal','45m · ₦800 foodstuff',()=>{if(!spend(800,'Foodstuff (home)'))return toast('Not enough money','','bad');startAction('Eating at home',45,{where:id,place:{x:it.x+Math.sin(r)*0.95,y:0,z:it.z+Math.cos(r)*0.95,r:r+Math.PI,pose:'eat'},per:()=>N('food',1.4),done:()=>{S.stats.meals++;addMoodlet('Home-cooked meal',8,300);}});},{cost:800}));break;
+    case 'snack':L.push(A('Grab a snack and a cold drink','10m · ₦300',()=>{if(!spend(300,'Snack'))return toast('Not enough money','','bad');startAction('Snacking',10,{where:id,place:Object.assign({},stand,{pose:'stand'}),per:()=>N('food',1.3),done:()=>addMoodlet('Cold drink',3,120)});},{cost:300}));break;
+    case 'sleep':{const bp={x:it.x,y:0.8,z:it.z+Math.cos(r)*0.2,r,pose:'lie'};L.push(A('Sleep','8h · double bed',()=>startAction('Sleeping',480,{sleep:true,where:id,place:bp,done:()=>addMoodlet('Slept in a big bed',8,600)})),A('Nap','2h',()=>startAction('Napping',120,{sleep:true,where:id,place:bp})));break;}}
+  L.push(A('Move it','Decorate mode',()=>bmStart({move:it})));
+  L.push(A('Sell it','+'+naira(Math.round(D.p/2)),()=>{const list=decorList(id);const i=list.indexOf(it);if(i>=0)list.splice(i,1);earn(Math.round(D.p/2),'Sold '+D.n);decorBuild(I);intNav(I);save();}));
+  return L;}
+HOOKS.populate.push(I=>{if(S&&S.decor&&S.decor[I.id])decorBuild(I);});
+
+/* ---------- UI: Decorate button, catalogue, placement bar ---------- */
+const bmBtn=el('button',null,'🛋 Decorate');bmBtn.id='bmBtn';bmBtn.hidden=true;$('#app').append(bmBtn);
+const bmBar=el('div',null,'<span class="t"></span><button data-a="rot">⟳ Rotate</button><button data-a="ok">✓ Place</button><button data-a="no">✕</button>');bmBar.id='bmBar';bmBar.hidden=true;$('#app').append(bmBar);
+{const st=document.createElement('style');st.textContent='body.bm-on #obj,body.bm-on #toasts{display:none!important}#bmBtn{position:absolute;left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);background:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-weight:600;font-size:12px;z-index:6}'+
+  '#bmBar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 74px);display:flex;gap:6px;align-items:center;background:var(--ink);border:1px solid var(--line);border-radius:12px;padding:8px;z-index:7;max-width:calc(100vw - 32px)}'+
+  '#bmBar .t{font-size:12px;color:var(--muted);padding:0 6px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bmBar button{min-height:44px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.06);font-weight:700;font-size:13px}#bmBar button[data-a=ok]{background:var(--gold);color:#1d1606;border-color:var(--gold)}#bmBar button:disabled{opacity:.45}';document.head.appendChild(st);}
+setInterval(()=>{bmBtn.hidden=!(myHomeHere()&&!BM.on&&!CS.on&&!W.fading);if(BM.on&&!myHomeHere())bmEnd();},400);
+bmBtn.onclick=()=>{if(!myHomeHere()||busy())return;const wrap=el('div');wrap.style.display='grid';wrap.style.gap='8px';const I=getInt(S.inside);const placed=decorList(S.inside);
+  wrap.append(el('div','note','Tap an item to buy it, then tap the floor where it should go. Placed pieces: tap them to use, move or sell.'));
+  ['Living','Kitchen','Bedroom','Study','Decor'].forEach(c=>{wrap.append(el('div','kicker2','<b style="font-size:11px;letter-spacing:.14em;color:var(--gold)">'+c.toUpperCase()+'</b>'));
+    DECOR.filter(d=>d.c===c).forEach(d=>{const b=el('button','opt','<div class="l"><b>'+d.n+'</b><span>'+(d.fx?{sit:'Sit and relax',tv:'Watch TV',game:'Play games',music:'Music and dancing',read:'Read',study:'Study',eat:'Cook and eat',snack:'Snacks and cold drinks',sleep:'Sleep'}[d.fx]:'Decoration · makes home nicer')+'</span></div><div class="r"><span class="c">'+naira(d.p)+'</span></div>');
+      if(S.money<d.p){b.disabled=true;}b.onclick=()=>{closeSheet();bmStart({k:d.k});};wrap.append(b);});});
+  if(placed.length)wrap.append(el('div','note','You have '+placed.length+' piece'+(placed.length>1?'s':'')+' in this home.'));
+  openSheet('Decorate',(LOCS[S.inside].iname||LOCS[S.inside].name),wrap);};
+function bmStart(o){const I=getInt(S.inside);if(ACT)stopAction(true);if(UI.sheet)closeSheet();bmEnd(true);const D=o.move?DECOR_BY[o.move.k]:DECOR_BY[o.k];if(!D)return;
+  BM.on=true;BM.I=I;BM.D=D;BM.move=o.move||null;BM.r=o.move?o.move.r||0:0;
+  if(o.move){const i=BM.I.decorObjs.findIndex(x=>x.def.acts&&x.g.position.x===o.move.x&&x.g.position.z===o.move.z);if(i>=0)BM.I.decorObjs[i].g.visible=false;}
+  BM.g=decorMesh(D.k,o.move&&o.move.col);BM.g.traverse(m=>{if(m.isMesh){m.material=m.material.clone();m.material.transparent=true;m.material.opacity=0.7;m.castShadow=false;}});
+  BM.ring=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({color:0x2fbf6a,transparent:true,opacity:0.35,depthWrite:false}));BM.ring.rotation.x=-Math.PI/2;BM.ring.position.y=0.04;BM.ring.scale.set(D.w+0.2,D.d+0.2,1);BM.g.add(BM.ring);
+  const x0=o.move?o.move.x:0,z0=o.move?o.move.z:0;BM.g.position.set(x0,0,z0);BM.g.rotation.y=BM.r;I.g.add(BM.g);
+  cam.idist=Math.max(cam.idist||0,22);document.body.classList.add('bm-on');bmBar.hidden=false;bmBar.querySelector('.t').textContent=(o.move?'Move: ':'')+D.n+' · tap the floor';bmCheck();}
+function bmEnd(silent){if(!BM.on)return;if(BM.g&&BM.g.parent)BM.g.parent.remove(BM.g);if(BM.move&&BM.I)BM.I.decorObjs.forEach(x=>x.g.visible=true);BM.on=false;BM.g=null;bmBar.hidden=true;document.body.classList.remove('bm-on');}
+function bmFoot(x,z,D,r){const q=Math.abs(Math.round(r/(Math.PI/2)))%2===1;return{hw:(q?D.d:D.w)/2,hd:(q?D.w:D.d)/2,x,z};}
+function bmCheck(){const I=BM.I,D=BM.D,p=BM.g.position,f=bmFoot(p.x,p.z,D,BM.r);let ok=Math.abs(p.x)+f.hw<I.w/2-0.35&&Math.abs(p.z)+f.hd<I.d/2-0.35;
+  if(ok&&I.spawn&&Math.abs(p.x-I.spawn.x)<f.hw+1.2&&Math.abs(p.z-I.spawn.z)<f.hd+1.4)ok=false; // keep the doorway clear
+  if(ok&&!D.flat){for(const it of decorList(I.id)){if(it===BM.move)continue;const E=DECOR_BY[it.k];if(!E||E.flat)continue;const g2=bmFoot(it.x,it.z,E,it.r||0);if(Math.abs(it.x-p.x)<f.hw+g2.hw&&Math.abs(it.z-p.z)<f.hd+g2.hd){ok=false;break;}}
+    if(ok){/* the room's own furniture (bed, desk, kitchen...) from its walk grid, built without the pieces placed here */const hid=[];(I.decorObjs||[]).forEach(o=>{if(o.g.visible){o.g.visible=false;hid.push(o.g);}});BM.g.visible=false;const save0=I.nav;I.nav=null;const g=intNav(I);I.nav=save0;hid.forEach(h=>h.visible=true);BM.g.visible=true;
+      for(let a=-1;a<=1&&ok;a+=0.5)for(let b=-1;b<=1;b+=0.5){const k=gIdx(g,p.x+a*f.hw*0.9,p.z+b*f.hd*0.9);if(k>=0&&g.blk[k]&&!(Math.abs(p.x+a*f.hw*0.9)>I.w/2-0.7||Math.abs(p.z+b*f.hd*0.9)>I.d/2-0.7)){ok=false;break;}}}}
+  BM.ok=ok;BM.ring.material.color.setHex(ok?0x2fbf6a:0xd23b2b);bmBar.querySelector('[data-a=ok]').disabled=!ok;return ok;}
+{const _tap=onTap;onTap=function(cx,cy){if(!BM.on)return _tap(cx,cy);const r=cv.getBoundingClientRect();mv.x=(cx-r.left)/r.width*2-1;mv.y=-(cy-r.top)/r.height*2+1;ray.setFromCamera(mv,camera);
+  const h=ray.intersectObject(BM.I.floor,false)[0];if(!h)return;const p=BM.I.g.worldToLocal(h.point.clone());BM.g.position.set(Math.round(p.x*2)/2,0,Math.round(p.z*2)/2);bmCheck();};}
+bmBar.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!BM.on)return;const a=b.dataset.a;
+  if(a==='rot'){BM.r=(BM.r+Math.PI/2)%(Math.PI*2);BM.g.rotation.y=BM.r;bmCheck();}
+  else if(a==='no')bmEnd();
+  else if(a==='ok'){if(!bmCheck())return;const p=BM.g.position,list=decorList(BM.I.id);
+    if(BM.move){BM.move.x=p.x;BM.move.z=p.z;BM.move.r=BM.r;}
+    else{if(!spend(BM.D.p,'Furniture: '+BM.D.n))return toast('Not enough money',BM.D.n+' costs '+naira(BM.D.p)+'.','bad');list.push({k:BM.D.k,x:p.x,z:p.z,r:BM.r});xp(10,'Decorated');if(list.length===3)addMoodlet('Home sweet home',10,1440);}
+    const I=BM.I;bmEnd();decorBuild(I);intNav(I);save();toast('Decorate',BM.move?'Moved.':'Placed. Tap it to use it.','good');}});
+/* a nicely furnished home lifts your mood while you are in it */
+HOOKS.minute.push(m=>{if(m%30||!S||!myHomeHere())return;const n=decorList(S.inside).length;if(n>=4)addMoodlet('Nicely furnished home',Math.min(10,2+n),60);});
+HOOKS.migrate.push(st=>{if(!st.decor)st.decor={};});
+if(window.__QA)window.__BM={BM,bmStart,bmEnd,bmCheck,decorBuild,DECOR,myHomeHere};
+/* ---- src/flora.js ---- */
+/* ================= FLOWER BEDS and BUSHES =================
+   Colourful beds along the front of every building (both sides of the door) and round bushes at the
+   corners. Everything is instanced (three draw calls in total), so it costs almost nothing on phones. */
+(function(){
+const beds=[],bushes=[];
+for(const id in LOCS){const L=LOCS[id];if(!L.h||L.kind==='gate'||!L.door)continue;
+  const dx=L.door.x-L.x,dz=L.door.z-L.z,alongX=Math.abs(dz)/L.d>=Math.abs(dx)/L.w;/* door on a z face -> beds run along x */
+  const len=(alongX?L.w:L.d),half=(alongX?L.d:L.w)/2,n=alongX?Math.sign(dz):Math.sign(dx),bl=Math.min(6,len*0.26);
+  [-1,1].forEach(s=>{const off=s*len*0.3,x=alongX?L.x+off:L.x+n*(half+0.75),z=alongX?L.z+n*(half+0.75):L.z+off,w=alongX?bl:0.9,d=alongX?0.9:bl;
+    if(roadDist(x,z)<6.2)return;beds.push({x,z,w,d});});
+  [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([a,b])=>{const x=L.x+a*(L.w/2+0.9),z=L.z+b*(L.d/2+0.9);if(roadDist(x,z)<6.5||Math.hypot(x-L.door.x,z-L.door.z)<3)return;bushes.push({x,z,s:0.8+Math.random()*0.5});});}
+const m4=new THREE.Matrix4(),q=new THREE.Quaternion(),sc=new THREE.Vector3(),ps=new THREE.Vector3(),col=new THREE.Color();
+/* soil + low edging */
+{const im=new THREE.InstancedMesh(G.box,new THREE.MeshLambertMaterial({color:0x4a3322}),beds.length);beds.forEach((b,i)=>{sc.set(b.w,0.22,b.d);ps.set(b.x,0.11,b.z);m4.compose(ps,q,sc);im.setMatrixAt(i,m4);
+  try{raster(NAV,{c:0,x:b.x,z:b.z,w:b.w,d:b.d,a:0},0.05,NAV.blk,1);}catch(e){}});im.receiveShadow=true;outdoor.add(im);}
+/* flowers: leaves + blooms in one instanced mesh with per-instance colour */
+const PAL=[0xd23b2b,0xe3b04b,0xf2f2ea,0xe0629a,0xf08a2b,0x8a4ad9,0xffd23b];
+const per=QH?22:QM?16:10,total=beds.length*per*2+bushes.length;
+const fm=new THREE.InstancedMesh(G.sphLo,new THREE.MeshLambertMaterial({color:0xffffff}),total);let k=0;
+beds.forEach((b,bi)=>{const p0=PAL[bi%PAL.length],p1=PAL[(bi*3+2)%PAL.length];
+  for(let i=0;i<per;i++){const x=b.x+(Math.random()-0.5)*(b.w-0.2),z=b.z+(Math.random()-0.5)*(b.d-0.2);
+    sc.set(0.2,0.16,0.2);ps.set(x,0.3,z);m4.compose(ps,q,sc);fm.setMatrixAt(k,m4);fm.setColorAt(k++,col.setHex(i%3?0x3f7a33:0x2f6a2b));
+    sc.set(0.11,0.09,0.11);ps.set(x+(Math.random()-0.5)*0.08,0.44+Math.random()*0.08,z+(Math.random()-0.5)*0.08);m4.compose(ps,q,sc);fm.setMatrixAt(k,m4);fm.setColorAt(k++,col.setHex(Math.random()<0.6?p0:p1));}});
+bushes.forEach(b=>{sc.set(0.55*b.s,0.5*b.s,0.55*b.s);ps.set(b.x,0.42*b.s,b.z);m4.compose(ps,q,sc);fm.setMatrixAt(k,m4);fm.setColorAt(k++,col.setHex(0x356b2c));try{raster(NAV,{c:1,x:b.x,z:b.z,r:0.5*b.s},0.05,NAV.blk,1);}catch(e){}});
+fm.count=k;if(fm.instanceColor)fm.instanceColor.needsUpdate=true;fm.castShadow=!!QH;fm.receiveShadow=true;outdoor.add(fm);
+if(window.__QA)window.__FLORA={beds:beds.length,bushes:bushes.length};
+})();
 /* ---- src/render.js ---- */
 /* Realistic rendering pass.
    - Sky dome: a real gradient sky with sun disc and glow, moon, stars and drifting fbm clouds whose cover follows the weather.
@@ -4925,6 +5225,733 @@ function updDome(cam){dome.visible=!(S&&S.inside);if(!dome.visible)return;dome.p
 const _render=renderer.render.bind(renderer);renderer.render=function(sc,cam){if(sc===scene)try{updDome(cam);}catch(e){}return _render(sc,cam);};
 window.__RND={dome,SU,gM};
 })();
+/* ---- src/ui2.js ---- */
+/* ================= UI 2: phone-width fixes, smoother sheets, clearer To-do, bigger Back buttons,
+   button feedback, auto-run, and a camera that never gets stuck inside a building ================= */
+{const st=document.createElement('style');st.textContent=`
+/* phone screens never scroll sideways */
+#pBody{overflow-x:hidden!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#pBody *{max-width:100%;box-sizing:border-box}
+#pBody .thread{width:100%;min-width:0}
+#pBody .thread .l{min-width:0;flex:1;overflow:hidden}
+#pBody .thread .l b,#pBody .thread .l span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pBody .thread .tm{flex:none}
+#pBody input,#pBody textarea,#pBody select,.gname{width:100%;box-sizing:border-box}
+#pBody .msg{max-width:82%;overflow-wrap:anywhere;word-break:break-word}
+#pBody .newchat{width:100%;box-sizing:border-box}
+#pBody .btnrow{flex-wrap:wrap}
+/* sheets (Profile, Wallet...) scroll smoothly and never bounce the page */
+.sheet .bd{overflow-x:hidden!important;touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;transform:translateZ(0);will-change:scroll-position}
+.sheet .bd>*{min-width:0}
+html,body{overscroll-behavior:none}
+/* Back buttons: big, clear pills */
+#pBack{min-width:74px;height:38px;padding:0 14px 0 10px;border-radius:19px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;font-size:15px;font-weight:700;display:inline-flex;align-items:center;gap:4px;line-height:1}
+#pBack::after{content:'Back';font-size:14px}
+#pBack:active{background:rgba(255,255,255,.22)}
+#btnBack,.vlg-link{min-height:44px;padding:0 18px;border-radius:22px;font-size:15px;font-weight:700}
+#leave{min-height:46px;padding:0 22px!important;font-size:15px!important;font-weight:800!important;border-radius:23px!important}
+.sheet .hd .x{width:40px;height:40px;font-size:18px;border-radius:20px}
+/* every button reacts to a tap */
+button{-webkit-tap-highlight-color:transparent;transition:transform .08s ease,filter .08s ease}
+button:active:not(:disabled){transform:scale(.95);filter:brightness(1.25)}
+button.vl-sent,button.vl-sent:disabled{opacity:1!important;background:var(--good,#3fa66b)!important;color:#fff!important;border-color:transparent!important}
+/* To-do panel: easy to notice */
+#obj{background:linear-gradient(180deg,rgba(26,52,44,.95),rgba(14,32,27,.95))!important;border:1.5px solid var(--gold,#e3b04b)!important;box-shadow:0 6px 22px rgba(0,0,0,.45),0 0 0 3px rgba(227,176,75,.12);font-size:13.5px!important;width:268px!important}
+#obj h4{font-size:12px!important;color:var(--gold,#e3b04b)!important}
+#obj h4:first-child::before{content:'📋 ';letter-spacing:0}
+#obj h4 button{background:rgba(255,255,255,.1)!important;border-radius:12px!important;padding:4px 10px!important;color:#fff!important}
+#obj li{padding:5px 6px;border-radius:7px}
+#obj li:not(.done):first-child{background:rgba(227,176,75,.16);font-weight:700}
+#obj li:not(.done):first-child .dot{border-color:var(--gold,#e3b04b);animation:vlPulse 1.4s ease-in-out infinite}
+#obj li .go{margin-left:auto;flex:none;font-size:11px;font-weight:800;color:#1b1406;background:var(--gold,#e3b04b);border-radius:10px;padding:2px 8px}
+#obj.min{width:auto!important}
+@keyframes vlPulse{0%,100%{box-shadow:0 0 0 0 rgba(227,176,75,.7)}50%{box-shadow:0 0 0 6px rgba(227,176,75,0)}}
+/* auto-run chip */
+#autoRun{position:absolute;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 132px);z-index:6;border:0;border-radius:22px;padding:10px 14px;font-weight:800;font-size:13px;background:rgba(15,35,30,.9);color:#fff;border:1.5px solid rgba(255,255,255,.2);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+#autoRun.on{background:var(--gold,#e3b04b);color:#1b1406;border-color:transparent}
+body.cine #autoRun,body.camp #autoRun,body.phone-open #autoRun,body.sheet-open #autoRun,body.mapmode #autoRun,body.bm-on #autoRun{display:none}
+`;document.head.appendChild(st);}
+
+/* ---- the To-do: the next thing gets a "Go" chip ---- */
+{const ul=$('#objL');if(ul)new MutationObserver(()=>{const li=ul.querySelector('li:not(.done)');if(li&&!li.querySelector('.go'))li.insertAdjacentHTML('beforeend','<span class="go">Go</span>');}).observe(ul,{childList:true});}
+
+/* ---- render less while a sheet or the phone covers the screen: scrolling stays smooth on phones ---- */
+HOOKS.frame.push(()=>{W.lowR=!!(UI.sheet||UI.phone);});
+
+/* ---- auto-run: double-tap the ground once and you keep running until you switch it off ---- */
+const autoBtn=el('button',null,'🏃 Auto-run');autoBtn.id='autoRun';autoBtn.hidden=true;host.appendChild(autoBtn);
+function autoRunSet(on){if(!S)return;S.flags.autoRun=!!on;autoBtn.classList.toggle('on',!!on);autoBtn.textContent=on?'🏃 Auto-run ON':'🚶 Walk';if(on){P.run=S.needs.energy>8&&P.mode==='walk';}else P.run=false;}
+autoBtn.onclick=()=>{autoRunSet(!S.flags.autoRun);toast(S.flags.autoRun?'Auto-run on':'Auto-run off',S.flags.autoRun?'You run everywhere. Tap the button to walk again.':'You walk. Double-tap the ground to run again.');};
+{const _t=onTap;onTap=function(cx,cy){const before=W.lastTap;const r=_t.apply(this,arguments);
+  if(S&&before&&W.lastTap===null&&P.mode==='walk'&&!S.flags.autoRun){autoRunSet(true);toast('Auto-run on','You keep running. Tap "Auto-run ON" to walk again.');}return r;};}
+{const _w=walkTo;walkTo=function(){const r=_w.apply(this,arguments);if(S&&S.flags.autoRun&&S.needs.energy>8)P.run=true;return r;};}
+{const _wi=walkInside;walkInside=function(){const r=_wi.apply(this,arguments);if(S&&S.flags.autoRun&&S.needs.energy>8)P.run=true;return r;};}
+HOOKS.boot.push(()=>{autoBtn.hidden=false;autoRunSet(!!(S&&S.flags.autoRun));});
+HOOKS.minute.push(()=>{if(S&&S.flags.autoRun&&S.needs.energy<=8&&P.run){P.run=false;toast('Too tired to run','Eat or rest. Auto-run starts again when you have energy.','bad');}});
+
+/* ---- camera: when you walk out of a building it swings round behind you, facing away from the wall,
+   and anywhere outdoors it rises over a building that blocks the view instead of getting stuck in it ---- */
+{const _ex=exitBuilding;exitBuilding=function(then){const id=S&&S.inside;return _ex.call(this,function(){
+  try{const L=LOCS[id];if(L&&L.door){cam.yaw=Math.atan2(L.door.x-L.x,L.door.z-L.z)+0.45;cam.pitch=Math.max(cam.pitch,0.62);cam.cd=Math.max(cam.dist*0.7,18);cam.eff=cam.cd;cam.cp=Math.max(cam.cp||0,0.62);}}catch(e){}
+  if(then)then();});};}
+{const _cc=camClear;camClear=function(tx,ty,tz,ux,uy,uz,dist){const d=_cc(tx,ty,tz,ux,uy,uz,dist);
+  /* blocked by a building: look for the nearest clear angle around the player and swing there (not while you drag) */
+  if(d<Math.min(dist,14)&&!W.drive&&!CS.on&&cam.mode==='home'&&!drag){const now=performance.now();if(!W.camScan||now-W.camScan>250){W.camScan=now;const hz=Math.hypot(ux,uz)||1;
+    for(const off of [0.35,-0.35,0.7,-0.7,1.05,-1.05,1.4,-1.4,1.9,-1.9,2.5,-2.5,3.14]){const y=cam.yaw+off;const vx=Math.sin(y)*hz,vz=Math.cos(y)*hz;if(_cc(tx,ty,tz,vx,uy,vz,dist)>=Math.min(dist,14)){W.camYawT=y;break;}}}}
+  else if(d>=dist-0.5)W.camYawT=null;
+  return d;};}
+HOOKS.frame.push(dt=>{if(W.camYawT!=null&&!drag&&S&&!S.inside&&cam.mode==='home'){const df=angDiff(W.camYawT,cam.yaw);cam.yaw+=df*Math.min(1,dt*3.2);if(Math.abs(df)<0.02)W.camYawT=null;}});
+
+/* ---- To-do: compact by default (only the next task shows, so it never covers your character); tap More to see all ---- */
+{const st=document.createElement('style');st.textContent='#obj.compact li:not(:first-child),#obj.compact .goalhd,#obj.compact #goalL{display:none}#obj.compact{width:auto!important;max-width:calc(100% - 32px)!important}';document.head.appendChild(st);
+  const o=$('#obj'),b=$('#objT');if(o&&b){o.classList.remove('min');o.classList.add('compact');b.textContent='More';
+    b.onclick=e=>{e.stopPropagation();o.classList.remove('min');o.classList.toggle('compact');b.textContent=o.classList.contains('compact')?'More':'Less';};}}
+if(window.__QA)window.__UI2={autoRunSet,tap:(x,y)=>onTap(x,y),walkTo:(x,z)=>walkTo({x,z})};
+/* ---- src/social2.js ---- */
+/* ================= SOCIAL 2: love life in character creation, relationship status on your profile ================= */
+const CASLOVE={status:'single',pref:'opp',partner:''};
+setTimeout(()=>{const btn=$('#btnNext');if(btn){const f=el('div','field');f.id='fLove';f.innerHTML='<span class="lb">Love life</span><div class="chips" id="cLove"></div><div class="chips" id="cLovePref" style="margin-top:6px"></div><input id="inPartner" maxlength="20" placeholder="Partner\'s name" autocomplete="off" style="margin-top:8px" hidden><div class="note" style="margin-top:6px;font-size:12px;color:var(--muted)">Dating in the game is only for players who are 18 or older.</div>';
+  btn.parentNode.insertBefore(f,btn);
+  const draw=()=>{const F=CAS.g==='f';const c=$('#cLove');c.innerHTML='';
+    [['single','Single'],['open','Single, open to dating'],['taken','Taken (partner back home)'],['none','Not interested']].forEach(([v,n])=>{const b=el('button',CASLOVE.status===v?'on':null,n);b.onclick=()=>{CASLOVE.status=v;draw();};c.append(b);});
+    const p=$('#cLovePref');p.innerHTML='';p.hidden=CASLOVE.status==='none';
+    [['opp','Into '+(F?'men':'women')],['same','Into '+(F?'women':'men')],['any','Everyone']].forEach(([v,n])=>{const b=el('button',CASLOVE.pref===v?'on':null,n);b.onclick=()=>{CASLOVE.pref=v;draw();};p.append(b);});
+    const pi=$('#inPartner');pi.hidden=CASLOVE.status!=='taken';pi.value=CASLOVE.partner;pi.oninput=()=>{CASLOVE.partner=pi.value.replace(/[<>]/g,'').slice(0,20);};};
+  const _r=refreshCAS;refreshCAS=function(){const r=_r.apply(this,arguments);try{draw();const ad=!window.VLNet||!VLNet.user||VLNet.user.adult!==false;$('#fLove').hidden=!ad;}catch(e){}return r;};
+  draw();}},0);
+HOOKS.newState.push(st=>{if(!st.love)return;st.love.pref=CASLOVE.pref;st.love.status=CASLOVE.status;if(CASLOVE.status==='taken')st.love.home={name:(CASLOVE.partner||'').trim()||'your partner back home',since:0};});
+
+/* what everyone sees: Single / Taken · name */
+function relStatus(){const L=S&&S.love;if(!L)return{t:'Single',taken:false};
+  if(L.player&&L.player.name)return{t:'Taken',who:L.player.name,taken:true};
+  if(L.stage==='dating'&&L.with&&PEOPLE[L.with])return{t:'Taken',who:PEOPLE[L.with].name,taken:true};
+  if(L.home&&L.home.name)return{t:'Taken',who:L.home.name+' (back home)',taken:true};
+  if(L.status==='none')return{t:'Not looking',taken:false};
+  return{t:L.status==='open'?'Single · open to dating':'Single',taken:false};}
+HOOKS.profile.push(wrap=>{const r=relStatus();const row=el('div','txrow','<div>Relationship</div><div class="amt" style="color:'+(r.taken?'#ff8fb2':'inherit')+'">'+(r.taken?'♥ Taken · '+esc(r.who):r.t)+'</div>');
+  const first=wrap.querySelector('.bgcard');if(first)first.after(row);else wrap.append(row);
+  if(mature()&&S.love&&S.love.home){const b=el('button','opt','<div class="l"><b>Break up with '+esc(S.love.home.name)+'</b><span>End the long-distance relationship</span></div>');b.onclick=()=>{const n=S.love.home.name;S.love.home=null;addMoodlet('Broke up',-10,1440);toast('Single again','You and '+esc(n)+' ended things on the phone.','bad');closeSheet();openProfile();};wrap.append(b);}});
+/* the online side reports your status with your position, so other players see "Taken · name" too */
+if(window.__QA)window.__SOC={relStatus,CASLOVE};
+/* ---- src/scenes.js ---- */
+/* ================= ACTION SCENES =================
+   Real, played-out scenes instead of text boxes:
+   1. your boys march to the person who wronged you and beat him up
+   2. security catch you outside after curfew and drag you to the Main Gate
+   3. kidnappers grab you on the road, push you into a car and take you to a house
+   4. Mr. Paulinus sees your high hair, marches you to the barber and watches the cut
+   5. jumping the back fence (the broken gap is gone; the wall is whole now)
+   6. when someone says yes: you hold hands, walk together and kiss
+   Every scene can be skipped; the result is the same either way. */
+
+/* ---------- extra poses ---------- */
+function _legs(J,t,amp){const a=Math.sin(t)*amp;J.thL.rotation.x=a;J.thR.rotation.x=-a;J.knL.rotation.x=Math.max(0,a)*1.1+0.05;J.knR.rotation.x=Math.max(0,-a)*1.1+0.05;J.body.position.y=Math.abs(Math.cos(t))*0.025;return a;}
+Object.assign(POSEX,{
+  punch:Object.assign((J,t,sd)=>{const c=Math.sin(t*8+sd*3);J.shR.rotation.x=-1.25-Math.max(0,c)*0.45;J.elR.rotation.x=-1.7+Math.max(0,c)*1.55;J.shL.rotation.x=-1.25-Math.max(0,-c)*0.45;J.elL.rotation.x=-1.7+Math.max(0,-c)*1.55;
+    J.shL.rotation.z=0.2;J.shR.rotation.z=-0.2;J.torso.rotation.y=c*0.38;J.torso.rotation.x=0.12;J.thL.rotation.x=-0.35;J.knL.rotation.x=0.45;J.thR.rotation.x=0.25;J.knR.rotation.x=0.15;J.body.position.y=-0.06;J.hd.rotation.x=0.12;},{fast:1}),
+  kick:Object.assign((J,t,sd)=>{const c=Math.max(0,Math.sin(t*5+sd));J.thR.rotation.x=-1.5*c;J.knR.rotation.x=0.25+(1-c)*0.6;J.thL.rotation.x=0.1;J.knL.rotation.x=0.2;J.torso.rotation.x=-0.18*c;J.shL.rotation.x=J.shR.rotation.x=-1.0;J.elL.rotation.x=J.elR.rotation.x=-1.6;J.shL.rotation.z=0.3;J.shR.rotation.z=-0.3;},{fast:1}),
+  hurt:Object.assign((J,t)=>{J.torso.rotation.x=0.55;J.torso.rotation.z=Math.sin(t*19)*0.06;J.shL.rotation.x=J.shR.rotation.x=-2.3;J.elL.rotation.x=J.elR.rotation.x=-1.7;J.shL.rotation.z=0.5;J.shR.rotation.z=-0.5;J.hd.rotation.x=0.5;
+    J.thL.rotation.x=J.thR.rotation.x=-0.45;J.knL.rotation.x=J.knR.rotation.x=0.8;J.body.position.y=-0.16;},{fast:1}),
+  held:(J,t)=>{_legs(J,t,0.42);J.shL.rotation.x=J.shR.rotation.x=0.35;J.shL.rotation.z=-0.55;J.shR.rotation.z=0.55;J.elL.rotation.x=J.elR.rotation.x=-0.25;J.torso.rotation.x=0.18;J.hd.rotation.y=Math.sin(t*0.9)*0.45;J.hd.rotation.x=0.18;},
+  heldstill:(J,t)=>{J.shL.rotation.x=J.shR.rotation.x=0.35;J.shL.rotation.z=-0.55;J.shR.rotation.z=0.55;J.elL.rotation.x=J.elR.rotation.x=-0.25;J.torso.rotation.x=0.12+Math.sin(t*6)*0.04;J.hd.rotation.y=Math.sin(t*2.3)*0.5;},
+  grabR:(J,t)=>{const a=_legs(J,t,0.42);J.shL.rotation.x=-a*0.7;J.shL.rotation.z=-0.08;J.shR.rotation.x=-0.55;J.shR.rotation.z=-0.55;J.elR.rotation.x=-0.7;J.torso.rotation.y=-0.12;},
+  grabL:(J,t)=>{const a=_legs(J,t,0.42);J.shR.rotation.x=a*0.7;J.shR.rotation.z=0.08;J.shL.rotation.x=-0.55;J.shL.rotation.z=0.55;J.elL.rotation.x=-0.7;J.torso.rotation.y=0.12;},
+  grabRs:(J)=>{J.shL.rotation.z=-0.08;J.shR.rotation.x=-0.55;J.shR.rotation.z=-0.55;J.elR.rotation.x=-0.7;J.torso.rotation.y=-0.12;},
+  grabLs:(J)=>{J.shR.rotation.z=0.08;J.shL.rotation.x=-0.55;J.shL.rotation.z=0.55;J.elL.rotation.x=-0.7;J.torso.rotation.y=0.12;},
+  handR:(J,t)=>{const a=_legs(J,t,0.4);J.shL.rotation.x=-a*0.6;J.shL.rotation.z=-0.08;J.shR.rotation.x=-0.12;J.shR.rotation.z=-0.42;J.elR.rotation.x=-0.15;J.hd.rotation.y=-0.22+Math.sin(t*0.4)*0.1;},
+  handL:(J,t)=>{const a=_legs(J,t,0.4);J.shR.rotation.x=a*0.6;J.shR.rotation.z=0.08;J.shL.rotation.x=-0.12;J.shL.rotation.z=0.42;J.elL.rotation.x=-0.15;J.hd.rotation.y=0.22+Math.sin(t*0.4)*0.1;},
+  handRs:(J,t)=>{J.shL.rotation.z=-0.08;J.shR.rotation.x=-0.12;J.shR.rotation.z=-0.42;J.elR.rotation.x=-0.15;J.hd.rotation.y=-0.35;},
+  handLs:(J,t)=>{J.shR.rotation.z=0.08;J.shL.rotation.x=-0.12;J.shL.rotation.z=0.42;J.elL.rotation.x=-0.15;J.hd.rotation.y=0.35;},
+  kiss:(J,t)=>{J.shL.rotation.x=J.shR.rotation.x=-1.05;J.shL.rotation.z=0.55;J.shR.rotation.z=-0.55;J.elL.rotation.x=J.elR.rotation.x=-0.75;J.torso.rotation.x=0.1;J.hd.rotation.x=0.12;J.hd.rotation.z=0.28;J.hd.rotation.y=Math.sin(t*0.5)*0.04;},
+  climb:Object.assign((J)=>{J.shL.rotation.x=J.shR.rotation.x=-2.5;J.elL.rotation.x=J.elR.rotation.x=-0.4;J.thL.rotation.x=J.thR.rotation.x=-1.3;J.knL.rotation.x=J.knR.rotation.x=1.9;J.torso.rotation.x=0.35;J.hd.rotation.x=-0.1;},{fast:1}),
+  land:Object.assign((J)=>{J.thL.rotation.x=J.thR.rotation.x=-1.05;J.knL.rotation.x=J.knR.rotation.x=1.7;J.body.position.y=-0.38;J.torso.rotation.x=0.45;J.shL.rotation.x=J.shR.rotation.x=-0.7;J.elL.rotation.x=J.elR.rotation.x=-0.3;},{fast:1}),
+  clip:(J,t)=>{J.shR.rotation.x=-1.45+Math.sin(t*6)*0.18;J.shR.rotation.z=-0.25;J.elR.rotation.x=-1.05+Math.sin(t*6)*0.12;J.shL.rotation.x=-1.25;J.shL.rotation.z=0.3;J.elL.rotation.x=-1.25;J.torso.rotation.x=0.18;J.hd.rotation.x=0.3;},
+  tied:(J,t,sd)=>{J.thL.rotation.x=J.thR.rotation.x=-Math.PI/2;J.knL.rotation.x=J.knR.rotation.x=0.35;J.body.position.y=-0.86;J.shL.rotation.x=J.shR.rotation.x=0.75;J.shL.rotation.z=0.25;J.shR.rotation.z=-0.25;J.elL.rotation.x=J.elR.rotation.x=-0.5;J.hd.rotation.x=0.45+Math.sin(t*0.4+sd)*0.06;J.torso.rotation.x=0.18;},
+  push:Object.assign((J,t)=>{const c=Math.max(0,Math.sin(t*4));J.shL.rotation.x=J.shR.rotation.x=-1.4;J.elL.rotation.x=J.elR.rotation.x=-0.9+c*0.8;J.torso.rotation.x=0.15+c*0.15;J.thL.rotation.x=-0.4;J.knL.rotation.x=0.4;},{fast:1}),
+  cheer:(J,t)=>{const b=Math.abs(Math.sin(t*5));J.shL.rotation.z=-2.6;J.shR.rotation.z=2.6;J.elL.rotation.z=-0.3-b*0.3;J.elR.rotation.z=0.3+b*0.3;J.body.position.y=b*0.06;J.hd.rotation.x=-0.2;}
+});
+
+/* ---------- helpers ---------- */
+const scWait=ms=>csWait(ms);
+function skipBtn(on){try{csEl().querySelector('.cskip').hidden=!on;}catch(e){}}
+/* a choice in the middle of a scene: the Skip button hides while you decide, so the choice can't be lost */
+const scAsk=(d)=>new Promise(res=>{skipBtn(false);dialog(Object.assign({},d,{choices:d.choices.map((c,i)=>({t:c.t,fn:()=>{skipBtn(true);res(i);return c.after||null;}}))}));});
+function scFadeOut(){return new Promise(r=>fadeThen(r));}
+function scHit(){if(!AU.on||!AU.ctx)return;const t=AU.ctx.currentTime;try{noise(0.08,0.35,t,900,'lowpass');tone(70,0.09,'sine',0.25,t,null,45);}catch(e){}}
+function scOutside(){/* step out of any building so the scene can play on campus */return new Promise(r=>{if(!S.inside)return r(false);const id=S.inside;fadeThen(()=>{const I=getInt(id);I.g.visible=false;I.labels.forEach(l=>l.el.style.display='none');outdoor.add(player);outdoor.visible=true;S.inside=null;cam.eff=null;
+  const L=LOCS[id];P.x=L.door.x;P.z=L.door.z;P.path=null;P.mode='idle';player.visible=true;scene.fog.near=170;scene.fog.far=430;$('#leave').hidden=true;r(true);});});}
+/* wait for actors to reach their spots; on a slow phone, anyone still walking is placed there so the scene keeps its pace */
+async function scArrive(list,ms){try{await csUntil(()=>list.every(csArrived),ms);}catch(e){throw e;}list.forEach(a=>{if(a.path&&a.i<a.path.length){const p=a.path[a.path.length-1];a.x=p.x;a.z=p.z;a.path=null;}});}
+function scStart(){if(ACT)stopAction(true);endDriving();P.path=null;P.mode='idle';csStart();CS.camInit=false;}
+function scEnd(){skipBtn(true);CS.tick=null;csClear();csDropAll();csEnd();player.visible=true;if(player.parent!==outdoor&&!S.inside)outdoor.add(player);player.position.set(P.x,0,P.z);}
+function lookOf(k){const p=PEOPLE[k];return (p&&p.look)?p.look:randomLook(false);}
+const SC={busy:false};
+/* the most open bit of ground near a point: few trees, bushes or walls, and off the road, so the camera can see the action */
+function openSpot(cx,cz,R){let best=null,bs=1e9;for(let x=cx-R;x<=cx+R;x+=3)for(let z=cz-R;z<=cz+R;z+=3){const k=gIdx(NAV,x,z);if(isBlk(NAV,k))continue;if(!(Math.abs(x)<100&&z<100&&z>-100))continue;
+    let sc=Math.hypot(x-cx,z-cz)*0.4;for(let dx=-6;dx<=6;dx+=1.5)for(let dz=-6;dz<=6;dz+=1.5){if(dx*dx+dz*dz>36)continue;if(isBlk(NAV,gIdx(NAV,x+dx,z+dz)))sc+=1;}
+    for(const t of trees){const d=Math.hypot(t[0]-x,t[1]-z);if(d<10)sc+=(10-d)*1.5;}
+    const rd=roadDist(x,z);if(rd<5)sc+=12;if(sc<bs){bs=sc;best={x,z};}}return best||freeNear(NAV,cx,cz,10);}
+async function scRun(name,fn){if(SC.busy||CS.on)return false;SC.busy=name;try{await fn();}catch(e){if(e!==SKIP)console.error('scene '+name,e);}finally{try{scEnd();}catch(e){}SC.busy=false;}return true;}
+
+/* ================= 1. CALL YOUR BOYS: the beating ================= */
+callBoys=function(w){const ready=boysReady();if(ready.length<2)return toast('My Boys','Not enough loyal boys. You need at least 2 friends at 60+ (you have '+ready.length+').','bad');if(!spend(2000,'Food for the boys'))return toast('Not enough money','The boys need ₦2,000 for food and drinks first.','bad');
+  if(UI.phone)closePhone();if(UI.sheet)closeSheet();if(ACT)stopAction(true);const crew=ready.slice(0,4);const names=crew.map(b=>fx(PEOPLE[b].name)).join(', ');w.settled=true;S.stats.fights=(S.stats.fights||0)+1;
+  const caught=chance(clamp(0.25-S.skills.street*0.02,0.1,0.35));let choice=0;
+  scRun('boys',async()=>{await scOutside();scStart();
+    const spot=openSpot(-60,74,24);const st=freeNear(NAV,LOCS.boys.door.x,LOCS.boys.door.z+3,8);
+    const me=csActor({g:player,x:st.x,z:st.z,keep:true,sp:5.2});player.visible=true;
+    const boys=crew.map((b,i)=>csActor({look:lookOf(b),x:st.x+(i%2?1.3:-1.3),z:st.z+1+Math.floor(i/2)*1.2,sp:5.2}));
+    let rlook=null;try{const n=NETX();if(w.player&&n&&n.others&&n.others.get(w.player))rlook=n.others.get(w.player).look;}catch(e){}
+    const rv=csActor({look:rlook||randomLook(isF()&&false),x:spot.x,z:spot.z,sp:4});rv.pose='phone';rv.dir=0;
+    csCaption('Your boys roll out',names+' are with you');
+    [me,...boys].forEach((a,i)=>{const off=i===0?{x:0,z:-2.4}:{x:(i%2?1.6:-1.6),z:-1.2-Math.floor((i-1)/2)*1.1};csWalk(a,{x:spot.x+off.x,z:spot.z+off.z+(-2.2)},5.4);});
+    csShot(()=>new THREE.Vector3(me.x+7,16,me.z+11),()=>new THREE.Vector3(me.x,1,me.z),1.4);await scArrive([me,...boys],14000);csCaption(null);
+    [me,...boys].forEach(a=>{a.face=rv;});rv.face=me;rv.pose='stand';
+    csTwoShot(me,rv,9,1);await scWait(500);
+    await csSay(rv,'Wetin? Una dey find trouble?',2200);
+    await csSay(me,'You '+fx(w.why||'took what is mine')+'. You think say I no go know?',2600);
+    choice=await scAsk({who:crew[0],kicker:'Your boys are waiting',text:fx(w.name)+' is backed against the wall. Your boys look at you.',choices:[{t:'Teach him a lesson'},{t:'Calm down and report him instead'}]});
+    if(choice===1){boys.forEach(a=>a.pose='cross');await csSay(crew.length?boys[0]:me,'Ehn. Na you sabi.',1800);return;}
+    /* the fight */
+    const ring=[[0,-1.1],[1.05,0.1],[-1.05,0.1],[0.2,1.1]];
+    [me,...boys].forEach((a,i)=>{const r=ring[i%4];csWalk(a,{x:rv.x+r[0],z:rv.z+r[1]},5.5);});
+    csShot(()=>new THREE.Vector3(rv.x+Math.sin(performance.now()/2600)*6.5,3.6,rv.z+Math.cos(performance.now()/2600)*6.5),()=>new THREE.Vector3(rv.x,1.0,rv.z),2.4);
+    await scArrive([me,...boys],2500);
+    [me,...boys].forEach((a,i)=>{a.face=rv;a.pose=i%3===2?'kick':'punch';});rv.pose='hurt';
+    const hits=setInterval(()=>{if(!CS.on){clearInterval(hits);return;}scHit();},260);
+    csCaption('Fight!','Behind the Boys Hostel');await scWait(3600);clearInterval(hits);csCaption(null);
+    rv.pose='lie';rv.fixed=true;[me,...boys].forEach(a=>a.pose='angryidle');boys.forEach((a,i)=>{if(i===1)a.pose='laugh';});
+    csShot(()=>new THREE.Vector3(rv.x+5,3.2,rv.z+4),()=>new THREE.Vector3(rv.x,0.4,rv.z),2);
+    await csSay(boys[0]||me,'Next time, think twice before you touch our guy!',2600);
+    if(caught){const T=csActor({look:guardLook(0x3a2416),x:spot.x+18,z:spot.z+6,sp:6.2});const T2=csActor({look:guardLook(0x4a2f1d),x:spot.x+19,z:spot.z+8,sp:6});
+      csWalk(T,{x:spot.x+2.5,z:spot.z+1},6.4);csWalk(T2,{x:spot.x+3,z:spot.z+2.2},6.2);T.face=me;T2.face=me;
+      csShot(()=>new THREE.Vector3(T.x+7,4,T.z+7),()=>new THREE.Vector3(T.x,1.4,T.z),2);await csSay(T,'HEY! WHO STARTED THIS?!',2000);await csUntil(()=>csArrived(T),3500);
+      [me,...boys].forEach(a=>a.pose='shy');await scWait(900);}
+  }).then(()=>{
+    if(choice===1){if(chance(.5)){earn(Math.round((w.amt||0)*0.5/100)*100,'Refund via Mr. Paulinus');toast('Reported','Mr. Paulinus makes him refund half. Your boys think you\'re soft.');}else toast('Reported','Mr. Paulinus says there\'s no proof.');return;}
+    crew.forEach(b=>rel(b,5));S.skills.street+=0.2;if(w.amt&&!w.player){const back=Math.round(w.amt*0.7/100)*100;earn(back,'Got some of your money back');}
+    const n=NETX();if(w.player&&n)n.beat(w.player,w.why);
+    if(caught)dialog({who:'tiger',kicker:'Gang fight',warn:'Fighting in the hostel goes to the panel.',text:'Officer Tiger arrives with security. "Who started this?"',choices:[
+      {t:'Take Tiger\'s punishment with your boys',fn:()=>{tigerBeat('fight');addDiscipline(3,'Gang fight in the hostel');if(S.discipline>=8&&!S.over)setTimeout(()=>endLife('suspended','leading a gang fight'),300);return 'All of you get the koboko, and three points each.';}},
+      {t:'Settle Tiger (₦8,000)',fn:()=>{if(!spend(8000,'Settled Officer Tiger (fight)')){addDiscipline(4,'Gang fight in the hostel');return 'No money. Four points.';}return '"Next time, I take all of you to the panel."';}}]});
+    else toast('Done',w.player?'Your boys taught '+fx(w.name)+' a lesson. Word spreads: don\'t touch your things.':fx(w.name)+' won\'t touch your things again. He even returns some of the money.','good');});};
+
+/* ================= 2. CAUGHT AFTER CURFEW: security drag you to the gate ================= */
+function curfewNow(){const h=minOf(S.t)/60;return h>=22.5||h<5;}
+HOOKS.minute.push(m=>{if(!S||S.over||S.inside||CS.on||SC.busy||busy()||W.drive||W.ride||S.captive)return;if(!curfewNow()||!onCampusP())return;if(ACT&&ACT.sleep)return;
+  if(S.flags.nightCaught===dayOf(S.t-300))return;if(Math.hypot(P.x,P.z-97)<10)return;/* already at the gate */
+  if(chance(0.03))curfewCatch();});
+function curfewCatch(){S.flags.nightCaught=dayOf(S.t-300);
+  scRun('curfew',async()=>{scStart();const me=csActor({g:player,x:P.x,z:P.z,keep:true,sp:3.4});player.visible=true;me.pose='stand';
+    const a0=freeNear(NAV,P.x+14,P.z+10,8),a1=freeNear(NAV,P.x-12,P.z+12,8);
+    const g1=csActor({look:guardLook(0x3a2416),x:a0.x,z:a0.z,sp:6}),g2=csActor({look:guardLook(0x4f321f),x:a1.x,z:a1.z,sp:6});
+    const torch=new THREE.SpotLight(0xfff2c0,3,30,0.35,0.5,1);torch.position.set(0,1.6,0.3);g1.g.add(torch);const tt=new THREE.Object3D();tt.position.set(0,0,6);g1.g.add(tt);torch.target=tt;
+    csShot(()=>new THREE.Vector3(me.x+7,4.5,me.z+7),()=>new THREE.Vector3(me.x,1.3,me.z),1.8);
+    csCaption('⚠ '+fmtTime(S.t),'Campus security · night patrol');
+    csWalk(g1,{x:me.x+0.75,z:me.z+0.2},6.2);csWalk(g2,{x:me.x-0.75,z:me.z+0.2},6.2);g1.face=me;g2.face=me;me.face=g1;
+    await csSay(g1,'YOU THERE! Stop! What are you doing outside by this time?',2400);
+    await scArrive([g1,g2],6000);csCaption(null);
+    me.pose='heldstill';g1.pose='grabRs';g2.pose='grabLs';await csSay(me,'Sir, I was just going back to the hostel…',2000);
+    await csSay(g2,'Story for the gate. Oya move!',1800);
+    /* they march you to the Main Gate, one on each arm */
+    const gate={x:-1.6,z:96.2};const route=navPath(me,gate)||[gate];me.path=route.map(p=>({x:p.x,z:p.z}));me.i=0;me.sp=3.4;me.walkPose='held';
+    g1.walkPose='grabL';g2.walkPose='grabR';g1.path=null;g2.path=null;g1.face=null;g2.face=null;
+    CS.tick=dt=>{const r=me.dir;const sx=Math.cos(r),sz=-Math.sin(r);[[g1,0.72],[g2,-0.72]].forEach(([g,o])=>{const tx=me.x+sx*o,tz=me.z+sz*o;const d=Math.hypot(tx-g.x,tz-g.z);g.x=tx;g.z=tz;g.dir=me.dir;g.v=d/Math.max(dt,0.001);
+      g.walk=me.walk;g.path=null;});};
+    /* the walk is long: show it in a few shots, speeding the boring part */
+    csFollow(me,10,5);W.csSpeed=2.2;await csUntil(()=>csArrived(me),45000);W.csSpeed=1;CS.tick=null;
+    me.walkPose=null;g1.walkPose=null;g2.walkPose=null;me.pose='heldstill';g1.pose='grabRs';g2.pose='grabLs';
+    csShot([6,4,90],[0,1.4,96],1.6);csCaption('Main Gate','Security post');await scWait(1600);csCaption(null);
+    P.x=0.5;P.z=95.4;P.path=null;P.mode='idle';
+  }).then(ok=>{if(!ok)return;W.side=0;dialog({who:'security',kicker:'Main Gate · after curfew',warn:'Being outside after the hostel locks goes on your record.',text:'The officer drops your arm at the security post and opens a big notebook. "Name. Room. And tell me what you were doing outside at '+fmtTime(S.t)+'."',choices:[
+    {t:'Sleep at the security post till morning',fn:()=>{const d0=dayOf(S.t);S.t=Math.floor(S.t/1440)*1440+(minOf(S.t)>=12*60?1440:0)+6*60;if(dayOf(S.t)!==d0)newDay();N('energy',30);N('hygiene',-20);N('health',-6);addMoodlet('Slept at the gate',-12,720);addDiscipline(1,'Caught outside after curfew');return 'Plastic chair, mosquitoes, the officer snoring. At 6 AM they let you go. One point on your record.';}},
+    {t:'Beg him to write nothing (₦3,000)',fn:()=>{if(!spend(3000,'Security at the gate (curfew)')){addDiscipline(1,'Caught outside after curfew');return '"No money? Then your name stays in the book."';}if(bribeOk(0.7)){S.flags.lockPass=S.t+30;return '"Go straight to your hostel. If I see you again tonight…" He walks you to the hostel gate.';}addDiscipline(2,'Caught outside after curfew and tried to bribe security');return 'Another officer walks in and sees the money. Two points.';}},
+    {t:'Call Officer Tiger to vouch for you (₦5,000)',fn:()=>{if(!spend(5000,'Officer Tiger (curfew)'))return 'Tiger doesn\'t pick up for broke people.';S.flags.lockPass=S.t+30;return 'Tiger arrives yawning. Two words to the officer and you are free. "Inside. Now."';}}]});});}
+
+/* ================= 3. KIDNAPPED ON THE ROAD: grabbed, pushed into a car, taken to a house ================= */
+let HIDE=null;
+function hideout(){if(HIDE)return HIDE;const g=new THREE.Group();g.position.set(-330,0,260);
+  const wall=new THREE.MeshLambertMaterial({color:0x9a8c74}),blk=new THREE.MeshLambertMaterial({color:0x7d725f}),floor=new THREE.MeshLambertMaterial({color:0x4b4237});
+  /* an unfinished block house: bare walls, no paint, a zinc roof, one doorway */
+  const P2=(w,h,d,x,y,z,m)=>{const b=new THREE.Mesh(G.box,m);b.scale.set(w,h,d);b.position.set(x,y,z);b.castShadow=b.receiveShadow=true;g.add(b);return b;};
+  P2(12,0.2,10,0,0.1,0,floor);P2(12,3.2,0.3,0,1.6,-5,wall);P2(0.3,3.2,10,-6,1.6,0,wall);P2(0.3,3.2,10,6,1.6,0,wall);P2(4.5,3.2,0.3,-3.75,1.6,5,wall);P2(4.5,3.2,0.3,3.75,1.6,5,wall);P2(3,0.8,0.3,0,2.8,5,wall);
+  for(let i=0;i<5;i++)P2(0.4,0.2,0.4,-4+i*2,3.3,-5,blk);
+  const roof=P2(13,0.08,11,0,3.45,0,new THREE.MeshLambertMaterial({color:0x6e6a62}));roof.rotation.x=0.05;
+  P2(2.2,0.18,1.2,-3.6,0.28,-3.2,new THREE.MeshLambertMaterial({color:0x5a4a6a}));/* old mattress */
+  P2(0.6,0.5,0.6,3.6,0.35,-3.6,new THREE.MeshLambertMaterial({color:0x3a6b3a}));/* jerry can */
+  const bulb=new THREE.PointLight(0xffc070,1.6,14,2);bulb.position.set(0,2.9,-0.5);g.add(bulb);const bm=new THREE.Mesh(G.sphLo||G.sph,new THREE.MeshBasicMaterial({color:0xffe0a0}));bm.scale.setScalar(0.12);bm.position.copy(bulb.position);g.add(bm);
+  /* bush around */
+  const bush=new THREE.MeshLambertMaterial({color:0x34522a});for(let i=0;i<26;i++){const a=i/26*Math.PI*2,r=rnd(11,20);const b=new THREE.Mesh(G.sphLo||G.sph,bush);b.scale.set(rnd(1.5,3),rnd(1.2,2.6),rnd(1.5,3));b.position.set(Math.cos(a)*r,0.8,Math.sin(a)*r);g.add(b);}
+  outdoor.add(g);g.visible=false;HIDE=g;return g;}
+{const _k=kidnap;kidnap=function(){if(CS.on||SC.busy)return _k.apply(this,arguments);const args=arguments,self=this;
+  scRun('kidnap',async()=>{endDriving();scStart();setCarLights(true);
+    const me=csActor({g:player,x:P.x,z:P.z,keep:true,sp:3.6});player.visible=true;me.pose='phone';
+    /* a car with no plate pulls up */
+    const car=buildVehicle('sedan',0x151515,{plate:' '});const dir0=Math.atan2(1,0);const sx=me.x-26,sz=me.z+2.4;car.g.position.set(sx,0,sz);car.g.rotation.y=Math.PI/2;
+    const V={x:sx,z:sz};let mode='in';
+    CS.tick=dt=>{if(mode==='in'){const tx=me.x-1.2,dx=tx-V.x;const sp=Math.min(14,Math.max(2,Math.abs(dx)*1.6));const st=Math.sign(dx)*Math.min(Math.abs(dx),sp*dt);V.x+=st;car.g.position.set(V.x,0,V.z);vehAnim(car,Math.abs(st),0,dt);if(Math.abs(dx)<0.05)mode='stop';}
+      else if(mode==='go'){V.x+=dt*16;car.g.position.set(V.x,0,V.z);vehAnim(car,dt*16,0,dt);}};
+    csShot(()=>new THREE.Vector3(me.x+6,3.2,me.z-7),()=>new THREE.Vector3(me.x-3,1.2,me.z+1),1.6);csCaption('Bwari road · '+fmtTime(S.t),'A car with no number plate slows down');
+    sfx('horn');await csUntil(()=>mode==='stop',9000);csCaption(null);
+    me.face={x:V.x,z:V.z};me.pose='look';
+    const k1=csActor({look:BANDIT_LOOK(0x2e1c12),x:V.x-0.5,z:V.z+1.4,sp:6.5}),k2=csActor({look:BANDIT_LOOK(0x3a2416),x:V.x+1.4,z:V.z+1.4,sp:6.5});
+    csWalk(k1,{x:me.x-0.7,z:me.z+0.3},6.5);csWalk(k2,{x:me.x+0.7,z:me.z+0.3},6.5);k1.face=me;k2.face=me;sfx('door');
+    await csSay(k1,'Enter motor! NOW!',1500);await scArrive([k1,k2],3000);
+    me.pose='heldstill';k1.pose='grabRs';k2.pose='push';csShot(()=>new THREE.Vector3(me.x+3.5,2.2,me.z-4),()=>new THREE.Vector3(me.x,1.3,me.z),2.5);
+    await csSay(me,'Help! HELP!',1300);await scWait(500);
+    /* pushed into the back seat */
+    const door={x:V.x+0.2,z:V.z+1.1};csWalk(me,door,3.2);csWalk(k1,{x:door.x-0.8,z:door.z+0.4},3.2);csWalk(k2,{x:door.x+0.8,z:door.z+0.4},3.2);me.walkPose='held';
+    await scArrive([me,k1,k2],3500);me.walkPose=null;sfx('door');await scWait(300);
+    me.g.visible=false;k1.g.visible=false;k2.g.visible=false;mode='go';sfx('horn');
+    csShot(()=>new THREE.Vector3(V.x-10,4,V.z+8),()=>new THREE.Vector3(V.x,1,V.z),1.4);csCaption('Taken','Blindfolded in the back seat');await scWait(2600);
+    /* the house */
+    await scFadeOut();CS.tick=null;if(car.g.parent)car.g.parent.remove(car.g);csClear();const H=hideout();H.visible=true;
+    const hx=H.position.x,hz=H.position.z;
+    const me2=csActor({g:player,x:hx-1.8,z:hz-1.2,keep:true});player.visible=true;me2.pose='tied';me2.fixed=true;me2.dir=0.4;
+    const c1=csActor({look:BANDIT_LOOK(0x2e1c12),x:hx+1.6,z:hz+0.6});c1.pose='cross';c1.dir=-2.2;c1.fixed=true;
+    const c2=csActor({look:BANDIT_LOOK(0x3a2416),x:hx+0.4,z:hz+2.6});c2.pose='phone';c2.dir=Math.PI;c2.fixed=true;
+    W.hideCast=[c1,c2];
+    csShot([hx+3.5,2.6,hz+3.6],[hx-1.2,0.6,hz-1],1.2);CS.camInit=false;csCaption('An unfinished house','Somewhere in the bush outside Bwari');
+    await scWait(2600);csCaption(null);c2.pose='talk';await csSay(c2,'Oya call your people. Tell them how much we want.',2600);
+    /* the ransom choice happens here, in the house; the scene stays until you are released or escape */
+    skipBtn(false);W.kidnapHouse=true;W.kidCalled=true;_k.apply(self,args);c2.pose='phone';
+    await new Promise(r=>{W.kidRes=r;setTimeout(r,180000);});
+  }).then(()=>{if(!W.kidCalled)_k.apply(self,args);W.kidCalled=false;});};}
+{const _a=afterKidnap;afterKidnap=function(paid){const r=_a.apply(this,arguments);if(HIDE)HIDE.visible=false;W.kidnapHouse=false;if(W.kidRes){const f=W.kidRes;W.kidRes=null;f();}return r;};}
+
+{const _d=dialog;dialog=function(d){if(d&&W.kidnapHouse&&d.kicker==='Kidnapped'&&typeof d.text==='string'){const m=d.text.match(/₦[\d,]+/);d=Object.assign({},d,{kicker:'Held in a house in the bush',text:'They tie your hands and sit you on the bare floor. One of them holds your phone up to your face. "Your people will pay '+(m?m[0]:'the money')+', or you will not see your school again."'});}return _d.call(this,d);};}
+/* ================= 4. PAULINUS AND YOUR HIGH HAIR ================= */
+HOOKS.minute.push(m=>{if(!S||S.over||S.inside||CS.on||SC.busy||busy()||W.drive||W.ride||S.captive||isF())return;if(S.hair<=6.3||S.flags.hairScene===dayOf(S.t))return;
+  const h=minOf(S.t)/60;if(h<8||h>=19.5||!onCampusP())return;if(Math.hypot(P.x-LOCS.boys.x,P.z-LOCS.boys.z)>45&&!chance(0.3))return;if(chance(0.025))paulinusHair();});
+const PLOOK=()=>Object.assign({},PEOPLE.paulinus.look,{top:'long',shirt:0xe8e2d0,pants:0x2f3540,fila:null});
+function paulinusHair(){S.flags.hairScene=dayOf(S.t);const pn=fx(PEOPLE.paulinus.name);let paid=false;
+  scRun('hair',async()=>{scStart();const me=csActor({g:player,x:P.x,z:P.z,keep:true,sp:3.8});player.visible=true;
+    const a0=freeNear(NAV,P.x+9,P.z+6,8);const pl=csActor({look:PLOOK(),x:a0.x,z:a0.z,sp:4.6});
+    csShot(()=>new THREE.Vector3((me.x+pl.x)/2+6,7,(me.z+pl.z)/2+6),()=>new THREE.Vector3((me.x+pl.x)/2,1.1,(me.z+pl.z)/2),1.6);
+    await csSay(pl,S.name+'! Come here. COME HERE!',1800);csWalk(pl,{x:me.x+0.8,z:me.z+0.3},4.8);pl.face=me;me.face=pl;
+    await scArrive([pl],5000);pl.pose='point';await csSay(pl,'Look at this hair. Is this a hostel or a music video?',2600);
+    me.pose='shy';await csSay(me,'Sir, I was going to cut it tomorrow…',1800);
+    pl.pose='grabRs';me.pose='heldstill';await csSay(pl,'Tomorrow is not a barber. We are going NOW.',2000);
+    /* he marches you to the barber shop by the arm */
+    const shop=LOCS.barber.door;const route=navPath(me,shop)||[shop];me.path=route;me.i=0;me.sp=3.8;me.walkPose='held';pl.walkPose='grabL';
+    CS.tick=dt=>{const r=me.dir;const tx=me.x+Math.cos(r)*0.72,tz=me.z-Math.sin(r)*0.72;const d=Math.hypot(tx-pl.x,tz-pl.z);pl.x=tx;pl.z=tz;pl.dir=me.dir;pl.v=d/Math.max(dt,0.001);pl.walk=me.walk;pl.path=null;};
+    csFollow(me,10,5);csCaption('To the barber','Mr. Paulinus is not letting go');W.csSpeed=2.2;await csUntil(()=>csArrived(me),40000);W.csSpeed=1;CS.tick=null;csCaption(null);
+    /* inside the shop: the chair, the clippers, Paulinus watching */
+    await scFadeOut();csClear();const I=getInt('barber');outdoor.visible=false;I.g.visible=true;I.labels.forEach(l=>l.el.style.display='');S.inside='barber';scene.fog.near=60;scene.fog.far=140;
+    const g=intNav(I);const me2=csActor({g:player,parent:I.g,x:-1.5,z:-2.4,keep:true,grid:g});I.g.add(player);player.visible=true;me2.pose='sit';me2.fixed=true;me2.y=0.25;me2.dir=0;
+    if(I.barb)I.barb.g.visible=false;
+    const bb=csActor({look:{skin:0x3a2416,shirt:0xf2f2f2,pants:0x222222,hairStyle:'bald',hair:0,build:1.1},parent:I.g,x:-2.3,z:-2.55,grid:g});bb.pose='clip';bb.dir=Math.PI/2;bb.fixed=true;
+    const pl2=csActor({look:PLOOK(),parent:I.g,x:0.4,z:-1.2,grid:g});pl2.pose='cross';pl2.dir=-2.0;pl2.fixed=true;
+    csShot([2.4,2.5,2.4],[-1.0,1.2,-2.0],2);CS.camInit=false;
+    const buzz=setInterval(()=>{if(!CS.on){clearInterval(buzz);return;}if(AU.on&&AU.ctx){try{tone(118,0.25,'sawtooth',0.03,AU.ctx.currentTime,null,122);}catch(e){}}},280);
+    csCaption('Barber Shop','"Low cut. Very low. I am watching."');await csSay(pl2,'Low cut. Very low. I am watching.',2200);await scWait(2400);
+    S.hair=1.4;try{setHair(player,1.4);}catch(e){}
+    clearInterval(buzz);csCaption(null);await csSay(bb,'Finish. Clean like new.',1600);await csSay(pl2,'Good. This one is going on your record as a warning.',2200);
+    await scFadeOut();csClear();if(I.barb)I.barb.g.visible=true;I.g.visible=false;I.labels.forEach(l=>l.el.style.display='none');outdoor.visible=true;outdoor.add(player);S.inside=null;scene.fog.near=170;scene.fog.far=430;
+    const L=LOCS.barber;P.x=L.door.x;P.z=L.door.z;P.dir=Math.atan2(L.door.x-L.x,L.door.z-L.z);P.path=null;P.mode='idle';S.at='barber';cam.yaw=P.dir+0.45;cam.eff=null;
+  }).then(()=>{S.hair=1.4;try{if(['locs','cornrows','twists','afro','highfade'].includes(S.look.hairStyle)){S.look.hairStyle='low';buildPlayer(S.look);}setHair(player,S.hair);}catch(e){}
+    paid=spend(ECON.haircut||500,'Haircut (Mr. Paulinus made you)');if(!paid){S.flags.owePaulinus=(S.flags.owePaulinus||0)+(ECON.haircut||500);}
+    S.suspicion+=4;S.plog=S.plog||[];S.plog.push('Marched to the barber for high hair');addMoodlet('Fresh (forced) haircut',-4,720);setMood('Embarrassed',240);
+    toast('Fresh cut',paid?pn+' watched every stroke. '+naira(ECON.haircut||500)+' from your pocket.':'You had no money, so '+pn+' paid. You owe him.','bad');});}
+
+/* ================= 5. JUMPING THE BACK FENCE ================= */
+/* the gap is repaired: a whole wall piece where the broken bit was, and the rubble is gone */
+{const piece=new THREE.Mesh(G.box,new THREE.MeshLambertMaterial({color:0xcfc3a8}));piece.scale.set(2.4,2.4,1);piece.position.set(-85,1.2,106);piece.castShadow=piece.receiveShadow=true;outdoor.add(piece);
+  /* footholds on both sides: a couple of blocks students use to climb */
+  [[-84.2,104.9],[-85.6,107.2]].forEach(([x,z])=>{const b=new THREE.Mesh(G.box,new THREE.MeshLambertMaterial({color:0x8d8573}));b.scale.set(0.8,0.45,0.6);b.position.set(x,0.22,z);outdoor.add(b);});
+  try{pickables.forEach(p=>{if(p.userData&&p.userData.loc==='fence'){p.children.slice().forEach(c=>{if(c.isMesh&&c.geometry===G.box&&c.material&&c.material.color&&c.material.color.getHex()===0xbdb196)c.visible=false;});}});}catch(e){}
+  LOCS.fence.name='Back Fence';LOCS.fence.sub='Behind the Boys Hostel · students jump it here';}
+sneak=function(dir){if(W.ride||W.drive)return;if(S.inside){exitBuilding(()=>sneak(dir));return;}
+  const near=dir?{x:-85,z:104.3}:{x:-85,z:107.7},far=dir?{x:-85,z:108.4}:{x:-85,z:103.4};
+  const go=()=>scRun('fence',async()=>{scStart();const me=csActor({g:player,x:P.x,z:P.z,keep:true,sp:5.6});player.visible=true;me.face={x:-85,z:far.z};
+    csShot([-75.5,3.4,106+(dir?-2.5:2.5)],[-85,1.3,106],2);CS.camInit=false;
+    await scWait(500);me.pose='look';await scWait(700);
+    /* run-up, then over the top */
+    const z0=me.z,z1=far.z;let t=0;me.fixed=true;me.pose='climb';
+    CS.tick=dt=>{t+=dt;const k=Math.min(1,t/0.95);me.z=z0+(z1-z0)*k;me.x=-85;me.y=Math.sin(k*Math.PI)*2.0;me.dir=dir?0:Math.PI;if(k>0.62)me.pose='land';};
+    sfx('step');await csUntil(()=>t>=0.95,3000);me.y=0;me.pose='land';CS.tick=null;sfx('step');await scWait(450);me.pose='stand';me.fixed=false;await scWait(300);
+    P.x=far.x;P.z=far.z;P.path=null;P.mode='idle';});
+  if(Math.hypot(P.x-near.x,P.z-near.z)<2.5){go().then(()=>escapeRoll(dir));return;}
+  const pth=navPath(P,near);if(!pth)return toast('Can\'t reach the fence','Walk to the Back Fence behind the Boys Hostel first.');
+  P.path=pth;P.i=0;P.mode='walk';P.run=true;S.at=null;W.after=()=>{go().then(()=>escapeRoll(dir));};toast(dir?'Jumping the fence':'Jumping back in','Head down. Move fast.');};
+/* everyone who crosses the wall line (bandits in a raid, you) hops over it instead of walking through */
+HOOKS.frame.push(()=>{if(!CS.on)return;for(const a of CS.actors){if(a.fixed||!a.g.parent||a.g.parent!==outdoor)continue;if(Math.abs(a.x+85)<3&&a.z>104.6&&a.z<107.4){const k=(a.z-104.6)/2.8;a.g.position.y=Math.sin(k*Math.PI)*1.9;}}});
+
+/* ================= 6. HOLDING HANDS AND A KISS ================= */
+function coupleScene(name,id){if(!mature())return;const lk=(()=>{try{const n=NETX();if(id&&n&&n.others&&n.others.get(+id))return n.others.get(+id).look;}catch(e){}if(id&&PEOPLE[id]&&PEOPLE[id].look)return PEOPLE[id].look;const L=S.love||{};const want=L.pref==='same'?isF():L.pref==='any'?chance(.5):!isF();return randomLook(want);})();
+  const wait=()=>{if(UI.dlg||busy()||CS.on||SC.busy)return setTimeout(wait,600);run();};
+  const run=()=>scRun('couple',async()=>{const wasIn=S.inside;await scOutside();scStart();
+    const spot=freeNear(NAV,P.x+2,P.z+2,10);const me=csActor({g:player,x:spot.x,z:spot.z,keep:true,sp:2.6});player.visible=true;
+    const pt=csActor({look:lk,x:spot.x+0.62,z:spot.z,sp:2.6});
+    /* a slow walk, hand in hand */
+    const dirv=freeNear(NAV,spot.x,spot.z-14,10);const path=navPath(me,dirv)||[dirv];me.path=path;me.i=0;me.walkPose='handR';pt.walkPose='handL';
+    CS.tick=dt=>{const r=me.dir;const tx=me.x+Math.cos(r)*0.62,tz=me.z-Math.sin(r)*0.62;const d=Math.hypot(tx-pt.x,tz-pt.z);pt.x=tx;pt.z=tz;pt.dir=me.dir;pt.v=d/Math.max(dt,0.001);pt.walk=me.walk+Math.PI;pt.path=null;};
+    const hd=Math.atan2(dirv.x-spot.x,dirv.z-spot.z);me.dir=hd;pt.dir=hd;pt.x=me.x+Math.cos(hd)*0.62;pt.z=me.z-Math.sin(hd)*0.62;
+    csShot(()=>{const fx2=Math.sin(hd),fz2=Math.cos(hd),mx2=(me.x+pt.x)/2,mz2=(me.z+pt.z)/2;return new THREE.Vector3(mx2+fx2*7.5+fz2*3,3.2,mz2+fz2*7.5-fx2*3);},()=>new THREE.Vector3((me.x+pt.x)/2,1.1,(me.z+pt.z)/2),1.6);
+    csCaption('♥ '+fx(name),'Officially together');await csUntil(()=>csArrived(me),9000);CS.tick=null;csCaption(null);
+    me.walkPose=pt.walkPose=null;me.pose='handRs';pt.pose='handLs';await scWait(700);
+    /* face each other */
+    me.face=pt;pt.face=me;await scWait(900);
+    CS.camInit=false;csTwoShot(me,pt,4.2,1);await csSay(pt,pick(['I really like you, you know.','Took you long enough 🙈','So… we\'re doing this?']),2200);
+    await csSay(me,pick(['I like you too. A lot.','Best decision I\'ve made all semester.','We\'re doing this.']),2000);
+    /* step in close for the kiss */
+    const mx=(me.x+pt.x)/2,mz=(me.z+pt.z)/2;const ang=Math.atan2(pt.x-me.x,pt.z-me.z);me.x=mx-Math.sin(ang)*0.31;me.z=mz-Math.cos(ang)*0.31;pt.x=mx+Math.sin(ang)*0.31;pt.z=mz+Math.cos(ang)*0.31;me.dir=ang;pt.dir=ang+Math.PI;me.face=null;pt.face=null;
+    me.pose='kiss';pt.pose='kiss';me.fixed=pt.fixed=true;CS.camInit=false;csShot([mx+Math.cos(ang)*5.2,2.3,mz-Math.sin(ang)*5.2],[mx,1.45,mz],2.5);
+    const hearts=[];for(let i=0;i<7;i++){const e=el('div','vl-heart','♥');e.style.left=(40+Math.random()*20)+'%';e.style.animationDelay=(i*0.25)+'s';$('#app').append(e);hearts.push(e);}
+    sfx('fanfare');await scWait(2600);hearts.forEach(e=>e.remove());me.fixed=pt.fixed=false;me.pose='handRs';pt.pose='laugh';await scWait(900);});
+  wait();}
+{const st=document.createElement('style');st.textContent='.vl-heart{position:absolute;bottom:38%;z-index:30;font-size:30px;color:#ff5c8a;text-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;animation:vlHeart 2.2s ease-out forwards}@keyframes vlHeart{0%{transform:translateY(0) scale(.6);opacity:0}15%{opacity:1}100%{transform:translateY(-220px) scale(1.25);opacity:0}}';document.head.appendChild(st);}
+{const _o=askOfficial;askOfficial=function(id){const L=loveSt();const before=L.stage==='dating'&&L.with===id;const r=_o.apply(this,arguments);if(!before&&L.stage==='dating'&&L.with===id)setTimeout(()=>coupleScene(PEOPLE[id].name,id),300);return r;};}
+
+/* expose to the online side and to tests */
+setTimeout(()=>{try{const n=window.VLNet;if(n&&n.VL)Object.assign(n.VL,{coupleScene,concertSet:window.__concertSet||n.VL.concertSet});}catch(e){}},0);
+if(window.__QA)window.__SC={curfewCatch,paulinusHair,coupleScene,SC,sneak:d=>sneak(d),callBoys:w=>callBoys(w),kidnap:()=>kidnap(),hideout};
+/* ---- src/world2.js ---- */
+/* ================= WORLD 2: classes in Blocks A–D, hostel corridors with rooms and an upstairs floor,
+   stairs in the family house, library, admin and lecture blocks, decorating your hostel room and family home ================= */
+
+/* ---------- classes are spread over Blocks A–D ---------- */
+function blockFor(code){let h=0;for(const ch of String(code))h=(h*31+ch.charCodeAt(0))>>>0;return BLOCKS[h%BLOCKS.length];}
+function tagClasses(){try{(S.today&&S.today.classes||[]).forEach(c=>{if(!c.loc)c.loc=blockFor(c.code);});}catch(e){}}
+{const _nd=newDay;newDay=function(){const r=_nd.apply(this,arguments);tagClasses();return r;};}
+HOOKS.boot.push(tagClasses);
+
+/* ---------- moving between rooms of the same building (no trip outside) ---------- */
+function goInt(id,spawn,face){if(W.fading)return;const from=S.inside;if(ACT)stopAction(true);
+  fadeThen(()=>{if(from){const F=getInt(from);F.g.visible=false;F.labels.forEach(l=>l.el.style.display='none');}
+    const L=LOCS[id];const I=getInt(id);S.inside=id;S.at=id;outdoor.visible=false;I.g.visible=true;I.g.add(player);I.nav=null;intNav(I);if(I.populate)I.populate();cam.eff=null;
+    showTitle(fx(L.name).toUpperCase(),L.iname||L.sub);I.lastPop=Math.floor(S.t/30);const sp=spawn||I.spawn;const fp=freeNear(intNav(I),sp.x,sp.z,4);
+    P.x=fp.x;P.z=fp.z;P.dir=face==null?Math.PI:face;P.path=null;P.mode='idle';player.visible=true;cam.tx=P.x;cam.tz=P.z;cam.cd=cam.idist*2.1;cam.cp=1.2;sfx('door');
+    scene.fog.near=200;scene.fog.far=400;$('#leave').hidden=false;$('#leave').textContent=L.leaveTxt||('Leave '+(L.iname||fx(L.name)));
+    if(id==='boys'&&S.intro&&!CS.on)setTimeout(meetRoommates,450);if(!S.intro)try{chatArrive(id);}catch(e){}});}
+/* virtual places (inside a building, no outside shape): they share the building's door */
+function vloc(id,o){const B=LOCS[o.of];LOCS[id]=Object.assign({id,x:B.x,z:B.z,w:0,d:0,h:0,door:B.door,virtual:true},o);return LOCS[id];}
+
+/* ---------- stairs (a real flight of steps you walk to) ---------- */
+function stairsMesh(I,x,z,rot,up){const g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=rot||0;I.g.add(g);
+  const n=8;for(let i=0;i<n;i++){const y=up?(i+1)*0.42:(n-i)*0.42;part(G.box,0x9a8e7a,2.2,0.18,0.55,0,y-0.09,-i*0.55+1.9,g,false);part(G.box,0x7d725f,2.2,y,0.55,0,y/2,-i*0.55+1.9,g,false);}
+  part(G.box,0x5a4a3a,0.08,1.1,4.6,-1.15,up?2.3:1.9,0.1,g,false);part(G.box,0x5a4a3a,0.08,1.1,4.6,1.15,up?2.3:1.9,0.1,g,false);
+  return g;}
+
+/* ================= HOSTEL CORRIDORS ================= */
+vloc('boysHall',{of:'boys',name:LOCS.boys.name,iname:'Ground floor corridor',inside:'hall',floor:1,leaveTxt:'Leave the hostel'});
+vloc('boysHall2',{of:'boys',name:LOCS.boys.name,iname:'First floor corridor',inside:'hall',floor:2,leaveTxt:'Go downstairs'});
+vloc('nroom',{of:'boys',name:LOCS.boys.name,iname:'A room down the corridor',inside:'nroom',leaveTxt:'Back to the corridor'});
+const HALL_DOORS=[[1,-5.4,-4,'n'],[2,-1.8,-4,'n'],[3,1.8,-4,'n'],[4,5.4,-4,'n'],[5,-2.6,4,'s'],[6,0.6,4,'s'],[7,3.8,4,'s']];
+function myRoomNo(){return S.room==='210'?210:104;}
+function roomNo(fl,k){return fl*100+(fl===2&&k===4?10:k);}/* the first floor has Room 210 where Room 204 would be */
+const NAMES_M=['Ugo','Dayo','Ikenna','Seyi','Musa','Kene','Tobi','Bayo','Emeka J.','Victor','Somto','Yusuf'],NAMES_F=['Ada','Kemi','Zainab','Tolu','Ifeoma','Bisi','Hauwa','Chioma','Funke','Nneka','Amaka','Ruth'];
+BUILD.hall=function(I,id){const L=LOCS[id];const fl=L.floor||1;shell(I,16,8,4.4,floorTex('#d4cbb8','#c2b6a0','tile'),0xece5d5,-6.6,0x6b4a2e);
+  poster(I,0,0,3.4,[[fx(LOCS.boys.name).toUpperCase(),'800 24px Georgia'],[fl===1?'GROUND FLOOR':'FIRST FLOOR','700 20px sans-serif']],'#1f2d44','#e3b04b',3,0.9);
+  for(let k=-6;k<=6;k+=4){const l=part(G.box,0xfff3d0,0.9,0.06,0.25,k,4.2,0,I.g,false);l.material=new THREE.MeshBasicMaterial({color:0xfff3d0});}
+  /* room doors on both walls, each with its number */
+  HALL_DOORS.forEach(([k,x,z,side])=>{const no=roomNo(fl,k);const g=new THREE.Group();g.position.set(x,0,z+(side==='n'?0.3:-0.3));I.g.add(g);
+    part(G.box,0x7b5636,1.5,3.0,0.12,0,1.5,0,g);part(G.box,0x5a3d26,1.7,3.15,0.06,0,1.55,side==='n'?-0.05:0.05,g,false);part(G.sph,0xe3b04b,0.07,0.07,0.07,0.5,1.5,side==='n'?0.08:-0.08,g,false);
+    const plate=new THREE.Mesh(new THREE.PlaneGeometry(0.7,0.32),new THREE.MeshBasicMaterial({map:textTex([[String(no),'800 40px sans-serif']],128,56,no===myRoomNo()?'#e3b04b':'#f2efe6','#1a1208')}));plate.position.set(0,2.6,side==='n'?0.08:-0.08);if(side==='s')plate.rotation.y=Math.PI;g.add(plate);
+    addObj(I,g,{id:'door'+no,name:no===myRoomNo()?'Room '+no+' · yours':'Room '+no,ly:3.4,spot:{x,z:z+(side==='n'?1.4:-1.4)},acts:()=>roomActs(no,fl,x,z,side)});});
+  /* stairs at the far end */
+  const st=stairsMesh(I,6.6,0.2,0,fl===1);addObj(I,st,{id:'stairs',name:fl===1?'Stairs up':'Stairs down',ly:3.6,spot:{x:5,z:1.6},acts:()=>[fl===1?
+    A('Go upstairs','First floor · Rooms 201–210',()=>goInt('boysHall2',{x:5,z:1.6},-Math.PI/2)):A('Go downstairs','Ground floor · Rooms 101–107',()=>goInt('boysHall',{x:5,z:1.6},-Math.PI/2))]});
+  /* the notice board shows real players in the hostel right now */
+  const nb=new THREE.Group();nb.position.set(-3.6,0,3.8);I.g.add(nb);part(G.box,0x8a6a45,2.2,1.4,0.1,0,2.4,0,nb,false);part(G.box,0xf2efe6,1.9,1.1,0.05,0,2.4,-0.07,nb,false);
+  addObj(I,nb,{id:'board',name:'Who\'s in the hostel',ly:3.6,spot:{x:-3.6,z:2.4},acts:()=>hostelBoard()});
+  I.crowd=[];for(let k=0;k<(QM?4:3);k++){const r=interiorSim(I,randomLook(isF()),'student');r.g.userData.npc='student';I.pick.push(r.g);I.crowd.push(r);}
+  I.populate=()=>{resetInt(I);const h=minOf(S.t)/60;const n=h>=23||h<6?0:h>=7&&h<16?1:I.crowd.length;
+    I.crowd.slice(0,n).forEach((r,i)=>placeSim(r,rnd(-5.5,4.5),rnd(-1.5,1.5),rnd(0,6.28),pick(['phone','talk','cross','stand','laugh']),0));};};
+function roomActs(no,fl,x,z,side){const mine=no===myRoomNo();if(mine)return [A('Go into your room','Room '+no+' · your bunk, locker and roommates',()=>{S.flags.lockPass=Math.max(S.flags.lockPass||0,S.t+2);goInt('boys');})];
+  const names=isF()?NAMES_F:NAMES_M;const who=names[no%names.length],who2=names[(no*7+3)%names.length];
+  return [A('Knock on Room '+no,'See who is in',()=>{const h=minOf(S.t)/60;if(h>=23||h<6)return toast('Room '+no,'"Who is knocking by this time?! Go and sleep!"','bad');toast('Room '+no,pick(['"It\'s open, come in!"','"Who\'s that? Ah, come in jare."','"Enter, but don\'t touch my garri."']));}),
+    A('Go into Room '+no,who+' and '+who2+' live here',()=>{W.nroom={no,fl,x,z,side,who,who2};goInt('nroom');})];}
+function hostelBoard(){const n=NETX();const L=[];const online=(n&&n.online||[]).filter(p=>p.id!==(n.user&&n.user.id)&&p.loc&&(p.loc.startsWith('room:')||p.loc==='in:boysHall'||p.loc==='in:boysHall2'||p.loc==='in:boys'));
+  if(!n)return [A('Offline game','Real players show up here in the online game',()=>{},{dis:'Not online'})];
+  if(!online.length)L.push(A('No real players in the hostel right now','Check again later, or invite friends from the Players app',()=>{},{dis:'Nobody in'}));
+  online.slice(0,8).forEach(p=>L.push(A(fx(p.name),(p.loc.startsWith('room:')?'In their room':'In the corridor')+' · '+p.lvl+'L · tap to see their profile',()=>{setPhone('pprof',p.id);})));
+  L.push(A('Players app','Find anyone, ask to visit their room or invite them to yours',()=>setPhone('players')));return L;}
+/* another student's room down the corridor */
+BUILD.nroom=function(I,id){shell(I,11,9,4.4,floorTex('#c9bda6','#b7a98e','tile'),0xe7dfcf,3.4,0x5a4434);
+  bunk(I,-3.6,-1.2,0x2b6fd9,0x7a2331);bunk(I,-0.6,-1.2,0x2f8a57,0xe3b04b);locker(I,3.6,-3.6,0,0x3a5a7a);locker(I,4.7,-3.6,0,0x5a3a7a);
+  const tb=table(I,2.6,0.8,2.2,1.4,0x6b4a2e);fan(I,0,0,4.1);poster(I,0,0,3.2,[['NO CHEATING','800 22px sans-serif'],['ON MY GARRI','700 20px sans-serif']],'#f2efe6','#a22a2a',1.6,0.8);
+  I.sA=interiorSim(I,randomLook(isF()),'student');I.sB=interiorSim(I,randomLook(isF()),'student');[I.sA,I.sB].forEach(r=>{r.g.userData.npc='student';I.pick.push(r.g);});
+  addObj(I,tb,{id:'gist',name:'Their table',ly:2.8,spot:{x:2.6,z:2.2},acts:()=>{const R0=W.nroom||{};return [
+    A('Gist with '+(R0.who||'them'),'30m · fun, social',()=>startAction('Gisting in Room '+(R0.no||''),30,{where:'nroom',place:{x:2.6,y:0,z:2,r:Math.PI,pose:'sittalk'},per:()=>{N('fun',0.5);try{N('social',0.6);}catch(e){}},done:()=>{S.skills.street+=0.03;toast('Gist','You hear who is dating who on the first floor. Hot.');}})),
+    A('Borrow a phone charger','Quick favour',()=>toast('Room '+(R0.no||''),chance(.6)?'"Take am, bring am back o."':'"My own don spoil too. Sorry."'))];}});
+  I.populate=()=>{resetInt(I);const R0=W.nroom||{};const h=minOf(S.t)/60;
+    if(h>=23||h<6){placeSim(I.sA,-3.6,-0.2,0,'lie',1.27);placeSim(I.sB,-0.6,-0.2,0,'lie',3.07);}
+    else{placeSim(I.sA,-0.6,0.6,Math.PI/2,pick(['phone','read','sit']),1.27-0.77);placeSim(I.sB,1.8,2.2,2.6,pick(['talk','laugh','cross','game']),0);}
+    if(I.plate){I.plate.parent&&I.plate.parent.remove(I.plate);}I.plate=poster(I,1,0,3.4,[['ROOM '+(R0.no||''),'800 26px sans-serif'],[(R0.who||'')+' & '+(R0.who2||''),'600 20px sans-serif']],'#1f2d44','#f2efe6',2.4,0.9);};};
+
+/* entering the hostel from outside puts you in the corridor; leaving your room takes you back to it */
+{const _eb=enterBuilding;enterBuilding=function(id,then){
+  if(id==='boys'&&!then&&!S.inside&&!CS.on&&!S.intro&&!W.drive&&isOpen('boys')&&!lockedNow('boys')){if(ACT)stopAction(true);if(cam.mode==='map'){exitMap();setTab('home');}openDoor('boys',900);goInt('boysHall');return;}
+  return _eb.apply(this,arguments);};}
+{const _xb=exitBuilding;exitBuilding=function(then){const id=S&&S.inside;
+  if(!then&&!CS.on&&!W.fading){
+    if(id==='boys'){const fl=myRoomNo()>=200?2:1;const d=HALL_DOORS.find(x=>roomNo(fl,x[0])===myRoomNo())||HALL_DOORS[3];goInt(fl===2?'boysHall2':'boysHall',{x:d[1],z:d[2]+(d[3]==='n'?1.4:-1.4)},d[3]==='n'?Math.PI:0);return;}
+    if(id==='nroom'){const R0=W.nroom||{fl:1,x:0,z:-4,side:'n'};goInt(R0.fl===2?'boysHall2':'boysHall',{x:R0.x,z:R0.z+(R0.side==='n'?1.4:-1.4)},R0.side==='n'?Math.PI:0);return;}
+    if(id==='boysHall2'){goInt('boysHall',{x:5,z:1.6},-Math.PI/2);return;}
+    if(id&&LOCS[id]&&LOCS[id].upOf){const B=LOCS[id].upOf;goInt(B,LOCS[id].downSpawn||null);return;}
+    if(id==='family2'){goInt('family',{x:5.4,z:3.2},Math.PI);return;}}
+  return _xb.apply(this,arguments);};}
+/* the hostel's "where are you" checks treat the corridors as the hostel */
+{const _ln=lockedNow;lockedNow=function(id){if(['boysHall','boysHall2','nroom'].includes(id))return false;return _ln.apply(this,arguments);};}
+
+/* ================= FAMILY HOUSE: upstairs bedrooms ================= */
+vloc('family2',{of:'family',name:LOCS.family.name,iname:'Upstairs · bedrooms',inside:'family2',zone:'off',leaveTxt:'Go downstairs'});
+{const _bf=BUILD.family;BUILD.family=function(I,id){_bf(I,id);const st=stairsMesh(I,6.2,3.2,Math.PI,true);
+  addObj(I,st,{id:'stairs',name:'Stairs up',ly:3.8,spot:{x:4.6,z:3.6},acts:()=>[A('Go upstairs','Your bedroom, your parents\' room, the balcony',()=>goInt('family2',{x:5,z:2.6},Math.PI))]});};}
+BUILD.family2=function(I,id){shell(I,16,13,4.6,floorTex('#b89a72','#a4865e','wood'),0xf3ead8,5.5,0x7a3b2a);const hw=8,hd=6.5;
+  /* your bedroom */
+  const bed=new THREE.Group();bed.position.set(-5,0,-3.6);I.g.add(bed);part(G.box,0x6b4a2e,2.6,0.5,4.2,0,0.25,0,bed);part(G.box,0xe8d9a8,2.4,0.3,4,0,0.65,0,bed,false);part(G.box,0x2f8a57,2.45,0.1,2.6,0,0.83,0.6,bed,false);part(G.box,0xf2efe6,1.6,0.25,0.6,0,0.9,-1.6,bed,false);
+  poster(I,0,-5,3,[['MY ROOM','800 26px sans-serif'],['knock first!','600 20px sans-serif']],'#2b2b2b','#e3b04b',1.8,1);
+  const desk=new THREE.Group();desk.position.set(-1.6,0,-5.4);I.g.add(desk);part(G.box,0x5a3d26,2.4,0.1,1,0,1.3,0,desk);part(G.box,0x5a3d26,0.1,1.3,1,-1.1,0.65,0,desk);part(G.box,0x5a3d26,0.1,1.3,1,1.1,0.65,0,desk);part(G.box,0x223344,0.9,0.6,0.06,0,1.65,-0.3,desk,false);chair(I,-1.6,-4.2,Math.PI,0x2b2b2b);
+  /* parents' room behind a half wall */
+  part(G.box,0xe9e0cc,0.3,3.2,6,1.5,1.6,-3.5,I.g);const pbed=new THREE.Group();pbed.position.set(5,0,-3.6);I.g.add(pbed);part(G.box,0x4a2f1d,3.2,0.6,4.2,0,0.3,0,pbed);part(G.box,0xf2efe6,3,0.3,4,0,0.75,0,pbed,false);part(G.box,0x7a2331,3.05,0.1,2.6,0,0.93,0.6,pbed,false);
+  /* balcony door with a view */
+  onWall(I,1,-3,2.2,3,3,0xa8cbe0,true);
+  const bp={x:bed.position.x,y:0.8,z:bed.position.z+0.3,r:0,pose:'lie'};
+  addObj(I,bed,{id:'bed',name:'Your bed',ly:2.4,spot:{x:-3.4,z:-2.2},acts:()=>[A('Sleep','8h · your real bed',()=>startAction('Sleeping',480,{sleep:true,where:id,place:bp,done:()=>{addMoodlet('Slept in your own bed',12,600);toast('Morning','Nothing beats your own bed.','good');}})),A('Nap','2h',()=>startAction('Napping',120,{sleep:true,where:id,place:bp}))]});
+  addObj(I,desk,{id:'desk',name:'Your desk',ly:2.6,spot:{x:-1.6,z:-3.4},acts:()=>[A('Study at home','1h · quiet',()=>startAction('Studying at home',60,{where:id,place:{x:-1.6,y:0,z:-4.2,r:Math.PI,pose:'read'},per:()=>N('energy',-0.04),done:()=>{try{addStudy(1.1);}catch(e){}}})),A('Play games','1h',()=>startAction('Gaming at home',60,{where:id,place:{x:-1.6,y:0,z:-4.2,r:Math.PI,pose:'game'},per:()=>N('fun',0.7)}))]});
+  addObj(I,pbed,{id:'pbed',name:'Mum and Dad\'s room',ly:2.4,spot:{x:4,z:-0.8},acts:()=>[A('Look around','Family photos, Dad\'s old suits',()=>toast('Mum and Dad\'s room','Your baby photo is still on the wall. Embarrassing.'))]});
+  const st=stairsMesh(I,6.2,3.2,Math.PI,false);addObj(I,st,{id:'stairs',name:'Stairs down',ly:3.4,spot:{x:4.6,z:3.6},acts:()=>[A('Go downstairs','Living room and kitchen',()=>goInt('family',{x:4.6,z:3.6},Math.PI))]});
+  I.populate=()=>{resetInt(I);};};
+
+/* ================= UPSTAIRS IN CAMPUS BUILDINGS ================= */
+function addUpper(baseId,o){const B=LOCS[baseId];const id=baseId+'_up';vloc(id,Object.assign({of:baseId,name:B.name,inside:'upper',upOf:baseId,leaveTxt:'Go downstairs',downSpawn:o.downSpawn},o));
+  return id;}
+BUILD.upper=function(I,id){const L=LOCS[id];const kind=L.kind2||'study';shell(I,18,12,4.6,floorTex('#cfc8b8','#bdb5a2','tile'),0xeee8da,6.6,0x4a5a6a);
+  poster(I,0,0,3.4,[[fx(LOCS[L.upOf].name).toUpperCase(),'800 24px sans-serif'],['FIRST FLOOR','700 20px sans-serif']],'#1f2d44','#f2efe6',3,0.9);
+  if(kind==='study'){for(let i=0;i<3;i++)for(let j=0;j<2;j++)tableSet(I,-5+i*5,-2.6+j*4.6,0x6b4a2e,0x2b4f8a);}
+  else if(kind==='class'){for(let r=0;r<4;r++)for(let c=0;c<5;c++){const x=-6+c*3,z=-2.6+r*2.2;part(G.box,0x8a6a45,2.2,0.1,0.7,x,1.25,z-0.5,I.g,false);chair(I,x,z,Math.PI,0x7a2331);}onWall(I,0,0,2.6,6,2.2,0x24402f);}
+  else{for(let i=0;i<4;i++){table(I,-5+i*3.4,-3.4,2.2,1.2,0x5a3d26);chair(I,-5+i*3.4,-2.2,Math.PI,0x2b2b2b);}locker(I,7.6,-4.6,0,0x6b6b6b);locker(I,6.4,-4.6,0,0x6b6b6b);}
+  const room=new THREE.Group();room.position.set(0,0,0.5);I.g.add(room);
+  addObj(I,room,{id:'up',name:kind==='study'?'Quiet reading room':kind==='class'?'Upstairs classroom':'Offices',ly:2.6,spot:{x:0,z:3},acts:()=>kind==='office'?[A('Ask at the offices','5m',()=>toast(fx(LOCS[L.upOf].name),pick(['"Come back on Monday."','"Have you paid your fees? Bursary is downstairs."','"Fill this form in triplicate."'])))]:
+    [A('Study up here','1h · quieter than downstairs',()=>{const s=freeSeat(I)||I.seats[0];startAction('Studying upstairs',60,{where:id,place:{x:s.x,y:0,z:s.z,r:s.face,pose:'read'},per:()=>N('energy',-0.04),done:()=>{try{addStudy(1.0);}catch(e){}}});})]});
+  const st=stairsMesh(I,7.2,2.8,Math.PI,false);addObj(I,st,{id:'stairs',name:'Stairs down',ly:3.4,spot:{x:5.6,z:3.6},acts:()=>[A('Go downstairs','Back to '+fx(LOCS[L.upOf].name),()=>goInt(L.upOf,L.downSpawn||null))]});
+  I.crowd=[];for(let k=0;k<3;k++){const r=interiorSim(I,randomLook(k%2===1),'student');r.g.userData.npc='student';I.pick.push(r.g);I.crowd.push(r);}
+  I.populate=()=>{resetInt(I);const h=minOf(S.t)/60;if(h<7||h>=21)return;I.crowd.forEach(r=>seatSim(I,r,freeSeat(I),chance(.7)?'read':'sit'));};};
+/* stairs inside the library, administration and each lecture block */
+[['library','study'],['admin','office'],['lecture','class'],['blockB','class'],['blockC','class'],['blockD','class']].forEach(([b,k])=>addUpper(b,{kind2:k,iname:'First floor',downSpawn:null}));
+{const wrap=(type)=>{const _b=BUILD[type];BUILD[type]=function(I,id){_b.apply(this,arguments);if(!LOCS[id+'_up'])return;const x=I.w/2-1.6,z=I.d/2-3.2;const st=stairsMesh(I,x,z,Math.PI,true);
+    addObj(I,st,{id:'stairsup',name:'Stairs up',ly:3.8,spot:{x:x-1.6,z:z+0.6},acts:()=>[A('Go upstairs',LOCS[id+'_up'].kind2==='office'?'Offices':LOCS[id+'_up'].kind2==='study'?'Quiet reading room':'More classrooms',()=>goInt(id+'_up',{x:5.6,z:3.6},Math.PI))]});
+    LOCS[id+'_up'].downSpawn={x:x-1.6,z:z+0.6};};};
+  ['library','admin','lecture'].forEach(t=>{if(BUILD[t])wrap(t);});}
+
+/* ================= DECORATE: your hostel corner and your family home too ================= */
+{const _mh=myHomeHere;myHomeHere=function(){if(!S||!S.inside)return false;if(['boys','family','family2'].includes(S.inside))return true;return _mh.apply(this,arguments);};}
+
+/* ---------- labels for the new places in the map list ---------- */
+if(window.__QA)window.__W2={goInt,blockFor,hostelBoard,enter:(id,t)=>enterBuilding(id,t),exit:t=>exitBuilding(t),objectives:()=>{const o=[];(HOOKS.todo||[]).forEach(f=>f(o));return o;}};
+/* ---- src/concert.js ---- */
+/* ================= THE CONCERT (outside school) =================
+   The admin hosts it from the admin website (lineup, day, time, ticket prices) and every player gets it.
+   If the admin hasn't hosted one, the game puts on its own "Afrobeats Night Live" every so often.
+   Posters go up around campus, the course rep and VIBE spread the word, tickets are in the Tickets app,
+   and on the night a shuttle leaves from the Main Gate to the event ground in Bwari. */
+const CONCERT_DEFAULT={title:'Afrobeats Night Live',lineup:['Kezzy B','Starlight Wizz','Afro Giant'],hour:20,price:5000,vip:25000};
+const CON={g:null,boards:[],music:null,crowd:[],stars:[],beams:[],t:0,shot:0};
+const VENUE={x:-420,z:330};
+function conNow(){return S&&S.concert&&!S.concert.over?S.concert:null;}
+function conStart(){const c=conNow();return c?(c.day-1)*1440+c.hour*60:0;}
+function conLive(){const c=conNow();if(!c)return false;const s0=conStart();return S.t>=s0-90&&S.t<s0+180;}
+function conText(c){return c.title+' · '+c.lineup.join(' · ');}
+function conWhen(c){const d=c.day-dayOf(S.t);return (d<=0?'Tonight':d===1?'Tomorrow':DAYS[(c.day-1)%7]+' (Day '+c.day+')')+' · '+fmtTime(c.hour*60);}
+
+/* ---------- announcing a concert (from the admin, or the game's own) ---------- */
+function concertSet(c){if(!S)return;if(c&&c.cancel){if(S.concert){S.concert=null;S.ticket=null;boardsDraw();toast('Concert cancelled','The organisers called it off. Ticket money is refunded.','bad');if(S.ticketPaid){earn(S.ticketPaid,'Concert ticket refund');S.ticketPaid=0;}}return;}
+  if(!c||!c.lineup||!c.lineup.length)return;if(S.concert&&S.concert.id===c.id)return;
+  let day=dayOf(S.t)+(+c.inDays||0);if(day===dayOf(S.t)&&minOf(S.t)>(c.hour||20)*60+60)day++;
+  if(S.ticket&&S.concert&&S.concert.id!==c.id){if(S.ticketPaid)earn(S.ticketPaid,'Ticket refund (concert changed)');S.ticket=null;S.ticketPaid=0;}
+  S.concert={id:c.id||S.t,title:fx(c.title||CONCERT_DEFAULT.title),lineup:c.lineup.slice(0,6).map(fx),day,hour:c.hour||20,price:c.price!=null?c.price:5000,vip:c.vip!=null?c.vip:25000,src:c.src||'admin'};
+  boardsDraw();promote(true);save();}
+function promote(first){const c=conNow();if(!c)return;
+  msg('rep','🔥🎤 '+c.title.toUpperCase()+' 🎤🔥\n'+c.lineup.join(' · ')+'\n📍 Bwari Event Ground (outside school)\n🗓 '+conWhen(c)+'\n🎟 Regular '+naira(c.price)+' · VIP '+naira(c.vip)+'\nTickets in the Tickets app on your phone. Free shuttle from the Main Gate on the night!');
+  S.news=S.news||[];S.news.unshift({t:S.t,x:c.title+': '+c.lineup.join(', ')+' live at the Bwari Event Ground, '+conWhen(c)+'. Shuttle from the Main Gate.'});
+  if(first)setTimeout(()=>{if(S&&conNow())celebrate('🎤 '+c.title,c.lineup.join(' · ')+' · '+conWhen(c));},700);}
+/* the game's own concert every 6 days when the admin hasn't hosted one */
+HOOKS.day.push(()=>{if(!S||S.over)return;const d=dayOf(S.t);const c=S.concert;
+  if(c&&d>c.day){S.concert=null;S.ticket=null;S.ticketPaid=0;boardsDraw();}
+  if(!S.concert&&d>=3&&!(S.flags.conNext>d)){S.flags.conNext=d+6;concertSet(Object.assign({id:'g'+d,inDays:2,src:'game'},CONCERT_DEFAULT));}
+  else if(conNow()&&S.concert.day-d===1)promote(false);});
+HOOKS.boot.push(()=>{setTimeout(boardsDraw,500);});
+
+/* ---------- posters on campus ---------- */
+function posterTex(c){return canvasTex(512,300,(g,w,h)=>{const gr=g.createLinearGradient(0,0,w,h);gr.addColorStop(0,'#2a0a3a');gr.addColorStop(0.55,'#7a1f4a');gr.addColorStop(1,'#e3742b');g.fillStyle=gr;g.fillRect(0,0,w,h);
+  for(let i=0;i<14;i++){g.fillStyle='rgba(255,220,120,'+(0.05+Math.random()*0.12)+')';g.beginPath();g.moveTo(w/2,h);g.lineTo(Math.random()*w,0);g.lineTo(Math.random()*w,0);g.fill();}
+  g.textAlign='center';g.fillStyle='#ffd34d';g.font='900 46px sans-serif';g.fillText(c?c.title.toUpperCase():'',w/2,62);
+  g.fillStyle='#ffffff';g.font='800 34px sans-serif';(c?c.lineup:[]).slice(0,3).forEach((n,i)=>g.fillText(n,w/2,112+i*40));
+  g.fillStyle='#ffe9b0';g.font='700 24px sans-serif';if(c){g.fillText(conWhen(c)+' · Bwari Event Ground',w/2,240);g.fillText('Tickets '+naira(c.price)+' · VIP '+naira(c.vip)+' · Tickets app',w/2,276);}});}
+const BOARD_SPOTS=[[9,91,Math.PI],[-15,43,0],[60,62,0.0],[52,-23,0],[-30,36,Math.PI/2]];
+function boardsBuild(){if(CON.boards.length)return;BOARD_SPOTS.forEach(([x,z,r])=>{const g=new THREE.Group();g.position.set(x,0,z);g.rotation.y=r;outdoor.add(g);
+  [-2.6,2.6].forEach(px=>part(G.box,0x2b2b2b,0.18,3.4,0.18,px,1.7,0,g));const face=new THREE.Mesh(new THREE.PlaneGeometry(6,3.5),new THREE.MeshBasicMaterial({color:0xffffff}));face.position.set(0,4.6,0.11);g.add(face);
+  const back=new THREE.Mesh(new THREE.PlaneGeometry(6,3.5),new THREE.MeshLambertMaterial({color:0x222222}));back.position.set(0,4.6,-0.02);back.rotation.y=Math.PI;g.add(back);part(G.box,0x111111,6.3,3.8,0.1,0,4.6,0.04,g);
+  g.userData.conBoard=1;g.visible=false;CON.boards.push({g,face});});}
+function boardsDraw(){boardsBuild();const c=conNow();CON.boards.forEach(b=>{b.g.visible=!!c;if(c){const old=b.face.material.map;b.face.material.map=posterTex(c);b.face.material.needsUpdate=true;if(old)old.dispose();}});}
+/* tap a poster: the ticket sheet opens */
+{const _t=onTap;onTap=function(cx,cy){if(W.concert)return;try{if(S&&!S.inside&&conNow()&&!busy()){const r=cv.getBoundingClientRect();mv.x=(cx-r.left)/r.width*2-1;mv.y=-(cy-r.top)/r.height*2+1;ray.setFromCamera(mv,camera);
+  const hit=ray.intersectObjects(CON.boards.filter(b=>b.g.visible).map(b=>b.g),true)[0];if(hit&&hit.distance<60){ticketSheet();return;}}}catch(e){}return _t.apply(this,arguments);};}
+
+/* ---------- tickets ---------- */
+function ticketSheet(){const c=conNow();if(!c)return toast('Concerts','No concert announced right now.');const wrap=el('div');wrap.style.display='grid';wrap.style.gap='8px';
+  wrap.append(el('div','bgcard','<b>🎤 '+esc(c.title)+'</b><div class="note">'+c.lineup.map(esc).join(' · ')+'<br>📍 Bwari Event Ground, outside school<br>🗓 '+conWhen(c)+' · the show runs about 3 hours<br>🚌 Free shuttle from the Main Gate from '+fmtTime(c.hour*60-60)+'</div>'));
+  if(S.ticket)wrap.append(el('div','note','<b style="color:var(--good)">✓ You have a '+(S.ticket.vip?'VIP':'regular')+' ticket.</b> On the night, go to the Main Gate and board the concert shuttle.'));
+  const buy=(vip)=>{const p=vip?c.vip:c.price;const b=el('button','opt','<div class="l"><b>'+(vip?'VIP ticket':'Regular ticket')+'</b><span>'+(vip?'Front of the stage, free drink, meet the artists':'General standing')+'</span></div><div class="r"><span class="c">'+naira(p)+'</span></div>');
+    if(S.ticket&&(S.ticket.vip||!vip))b.disabled=true;b.onclick=()=>{const cost=S.ticket?p-(S.ticketPaid||0):p;if(!spend(cost,(S.ticket?'Upgrade to VIP · ':'Concert ticket · ')+c.title))return toast('Not enough money','You need '+naira(cost)+'.','bad');S.ticket={id:c.id,vip};S.ticketPaid=(S.ticketPaid||0)+cost;closeSheet();celebrate('🎟 Ticket bought',(vip?'VIP · ':'')+c.title+' · '+conWhen(c));try{N('fun',8);}catch(e){}save();};wrap.append(b);};
+  buy(false);buy(true);openSheet('Tickets',c.title,wrap);}
+HOOKS.apps.push(()=>conNow()?[['tickets','Tickets','#7a1f4a','🎟']]:[]);
+HOOKS.views.tickets=(b,T)=>{T.textContent='Tickets';const c=conNow();if(!c){b.append(el('div','note','No concert right now. Watch the posters on campus.'));return;}
+  b.append(el('div','bgcard','<b>🎤 '+esc(c.title)+'</b><div class="note">'+c.lineup.map(esc).join(' · ')+'<br>'+conWhen(c)+' · Bwari Event Ground</div>'));
+  b.append(el('div','note',S.ticket?'✓ You have a '+(S.ticket.vip?'VIP':'regular')+' ticket. Board the shuttle at the Main Gate on the night.':'Regular '+naira(c.price)+' · VIP '+naira(c.vip)));
+  const x=el('button',null,S.ticket?'See your ticket':'Buy tickets');x.onclick=()=>{closePhone();ticketSheet();};const r=el('div','btnrow');r.append(x);b.append(r);};
+/* the To-do shows the concert on the day */
+HOOKS.todo=HOOKS.todo||[];HOOKS.todo.push(o=>{const c=conNow();if(c&&c.day===dayOf(S.t)&&minOf(S.t)<c.hour*60+150)o.unshift({t:'🎤 '+c.title+' · '+fmtTime(c.hour*60)+(S.ticket?' · shuttle at the Main Gate':' · buy a ticket'),loc:'gate',c:'urgent'});});
+/* the shuttle at the Main Gate */
+HOOKS.acts.push(id=>{if(id!=='gate'||!conNow())return [];const c=conNow();const m=S.t-conStart();
+  if(m<-90)return [A('Concert shuttle','Leaves from '+fmtTime(c.hour*60-60)+' on '+conWhen(c),()=>{},{dis:'Not yet'})];
+  if(m>=150)return [];
+  return [A('Board the concert shuttle','To the Bwari Event Ground · '+(S.ticket?(S.ticket.vip?'VIP':'regular')+' ticket':'you need a ticket'),()=>{if(!S.ticket)return ticketSheet();goConcert();},{now:true})];});
+
+/* ---------- the event ground ---------- */
+function venueBuild(){if(CON.g)return CON.g;const g=new THREE.Group();g.position.set(VENUE.x,0,VENUE.z);outdoor.add(g);CON.g=g;g.visible=false;
+  const M=c=>new THREE.MeshLambertMaterial({color:c});const B=(w,h,d,x,y,z,m)=>{const b=new THREE.Mesh(G.box,m);b.scale.set(w,h,d);b.position.set(x,y,z);g.add(b);return b;};
+  B(70,0.1,56,0,0.05,0,M(0x6b5a3e));/* the field */
+  B(24,1.6,9,0,0.8,-18,M(0x1b1b1f));B(24,0.1,9,0,1.62,-18,M(0x2b2b33));/* stage */
+  B(0.6,12,0.6,-12.5,6,-14,M(0x555555));B(0.6,12,0.6,12.5,6,-14,M(0x555555));B(0.6,12,0.6,-12.5,6,-22,M(0x555555));B(0.6,12,0.6,12.5,6,-22,M(0x555555));B(26,0.6,0.6,0,12,-14,M(0x555555));B(26,0.6,0.6,0,12,-22,M(0x555555));
+  /* LED screen with the concert name */
+  CON.screen=new THREE.Mesh(new THREE.PlaneGeometry(16,7),new THREE.MeshBasicMaterial({color:0xffffff}));CON.screen.position.set(0,7.6,-21.9);g.add(CON.screen);
+  /* speaker stacks and barrier */
+  [-15,15].forEach(x=>{B(3,6,3,x,3,-16,M(0x111111));for(let i=0;i<3;i++)B(1.6,1.6,0.1,x,1.2+i*1.8,-14.45,M(0x2a2a2a));});
+  for(let i=-10;i<=10;i+=2)B(1.9,1.2,0.15,i,0.6,-11.5,M(0x9a9a9a));
+  /* VIP rope and stalls */
+  B(14,0.08,0.08,0,1,-6,M(0xe3b04b));[-26,-20,20,26].forEach((x,i)=>{B(4,2.6,3,x,1.3,8,M([0xd23b2b,0x2f8a57,0x2b4f8a,0xe3b04b][i]));B(4.6,0.3,3.6,x,2.8,8,M(0xf2efe6));});
+  /* light beams (no real lights: cheap on phones) and two coloured lamps */
+  for(let i=0;i<6;i++){const cone=new THREE.Mesh(new THREE.ConeGeometry(2.2,16,12,1,true),new THREE.MeshBasicMaterial({color:[0xff3d8a,0x3dd6ff,0xffd34d,0x8a5aff,0x3dff8a,0xff8a3d][i],transparent:true,opacity:0.16,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide}));
+    const piv=new THREE.Group();piv.position.set(-11+i*4.4,12,-14.5);piv.add(cone);cone.position.y=-8;g.add(piv);CON.beams.push(piv);}
+  CON.lamps=[0xff3d8a,0x3dd6ff].map((c,i)=>{const l=new THREE.PointLight(c,2.2,40,2);l.position.set(i?8:-8,8,-12);g.add(l);return l;});
+  /* the crowd */
+  const n=QH?26:QM?18:12;for(let i=0;i<n;i++){const s=makeSim(randomLook(chance(.5)));const x=rnd(-14,14),z=rnd(-9,6);s.position.set(x,0,z);s.rotation.y=Math.PI+rnd(-0.4,0.4);g.add(s);CON.crowd.push({g:s,ph:rnd(0,6),k:pick(['dance','dance','cheer','dance','phone'])});}
+  /* the artists */
+  for(let i=0;i<3;i++){const s=makeSim(Object.assign(randomLook(false),{shirt:[0xf2f2f2,0x1b1b1b,0xd23b2b][i],top:['ankara','tee','long'][i],glasses:i===1,necklace:true,watch:true}));s.position.set(-4+i*4,1.65,-18);s.visible=i===0;g.add(s);CON.stars.push(s);}
+  return g;}
+function screenDraw(c,artist){const t=canvasTex(512,224,(g,w,h)=>{g.fillStyle='#08040c';g.fillRect(0,0,w,h);const gr=g.createLinearGradient(0,0,w,0);gr.addColorStop(0,'#ff3d8a');gr.addColorStop(1,'#ffd34d');g.fillStyle=gr;g.textAlign='center';
+  g.font='900 40px sans-serif';g.fillText(c.title.toUpperCase(),w/2,70);g.fillStyle='#ffffff';g.font='900 54px sans-serif';g.fillText(artist||'',w/2,150);g.fillStyle='#bbb';g.font='600 20px sans-serif';g.fillText('BWARI EVENT GROUND',w/2,196);});
+  const old=CON.screen.material.map;CON.screen.material.map=t;CON.screen.material.needsUpdate=true;if(old)old.dispose();}
+
+/* ---------- music: a small afrobeats loop made in the browser (no audio files) ---------- */
+function musicStart(){if(CON.music||!AU.on||!AU.ctx)return;const c=AU.ctx;const out=c.createGain();out.gain.value=0.5;out.connect(c.destination);let step=0;const bpm=104,sp=60/bpm/4;let next=c.currentTime+0.05;
+  const kick=t=>{const o=c.createOscillator(),gg=c.createGain();o.frequency.setValueAtTime(120,t);o.frequency.exponentialRampToValueAtTime(42,t+0.16);gg.gain.setValueAtTime(0.9,t);gg.gain.exponentialRampToValueAtTime(0.001,t+0.22);o.connect(gg);gg.connect(out);o.start(t);o.stop(t+0.24);};
+  const hit=(t,f,d,v,type)=>{const s=c.createBufferSource();s.buffer=AU.noiseBuf;const fl=c.createBiquadFilter();fl.type=type||'highpass';fl.frequency.value=f;const gg=c.createGain();gg.gain.setValueAtTime(v,t);gg.gain.exponentialRampToValueAtTime(0.001,t+d);s.connect(fl);fl.connect(gg);gg.connect(out);s.start(t);s.stop(t+d+0.02);};
+  const log=(t,f)=>{const o=c.createOscillator(),gg=c.createGain();o.type='sine';o.frequency.setValueAtTime(f*1.6,t);o.frequency.exponentialRampToValueAtTime(f,t+0.06);gg.gain.setValueAtTime(0.5,t);gg.gain.exponentialRampToValueAtTime(0.001,t+0.35);o.connect(gg);gg.connect(out);o.start(t);o.stop(t+0.4);};
+  const chord=(t,fs)=>fs.forEach(f=>{const o=c.createOscillator(),gg=c.createGain();o.type='triangle';o.frequency.value=f;gg.gain.setValueAtTime(0.06,t);gg.gain.exponentialRampToValueAtTime(0.001,t+0.25);o.connect(gg);gg.connect(out);o.start(t);o.stop(t+0.3);});
+  const BASS=[55,0,0,55,0,0,73.4,0,0,65.4,0,0,61.7,0,55,0],CH=[[220,277,330],[196,247,294],[175,220,262],[196,247,294]];
+  const tick=()=>{if(!CON.music)return;while(next<c.currentTime+0.12){const s=step%16,bar=Math.floor(step/16)%4;if(s===0||s===7||s===10)kick(next);if(s===4||s===12)hit(next,1800,0.12,0.35,'bandpass');hit(next,7000,0.03,s%2?0.08:0.14);
+      if(BASS[s])log(next,BASS[s]);if(s===2||s===6||s===10||s===14)chord(next,CH[bar]);next+=sp;step++;}};CON.music={out,iv:setInterval(tick,25)};}
+function musicStop(){if(!CON.music)return;clearInterval(CON.music.iv);try{CON.music.out.gain.setTargetAtTime(0,AU.ctx.currentTime,0.2);setTimeout(()=>{try{CON.music&&CON.music.out.disconnect();}catch(e){}CON.music=null;},600);}catch(e){CON.music=null;}}
+
+/* ---------- going, being there, leaving ---------- */
+const conBar=el('div',null,'');conBar.id='conBar';conBar.hidden=true;$('#app').append(conBar);
+{const st=document.createElement('style');st.textContent='#conBar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 74px);z-index:8;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;width:min(560px,calc(100vw - 24px))}#conBar button{flex:1 1 30%;min-height:46px;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(20,8,28,.88);color:#fff;font-weight:800;font-size:13px}#conBar button.on{background:#ff3d8a;border-color:#ff3d8a}#conBar .cap{flex:1 1 100%;text-align:center;font-weight:800;color:#ffd34d;text-shadow:0 2px 8px #000;font-size:14px}body.concert #obj,body.concert #autoRun,body.concert #leave,body.concert #bmBtn,body.concert #labels,body.concert #prompt,body.concert #mapbar{display:none!important}';document.head.appendChild(st);}
+function goConcert(){const c=conNow();if(!c||W.concert)return;if(ACT)stopAction(true);endDriving();venueBuild();
+  fadeThen(()=>{CON.g.visible=true;W.concert={vip:!!(S.ticket&&S.ticket.vip),dance:false,artist:-1,front:false};W.side=1;
+    P.x=VENUE.x+rnd(-3,3);P.z=VENUE.z+(W.concert.vip?-8:3);P.path=null;P.mode='idle';P.dir=Math.PI;player.visible=true;outdoor.add(player);player.position.set(P.x,0,P.z);
+    document.body.classList.add('concert');conBar.hidden=false;conDraw();musicStart();setCarLights(true);
+    toast('Bwari Event Ground',W.concert.vip?'VIP wristband on. Straight to the front.':'The bass hits you in the chest. The whole of Bwari is here.','good');try{N('fun',10);N('stress',-8);}catch(e){}
+    const n=NETX();if(n)try{n.log('party_host',{concert:c.title});}catch(e){}});}
+function conDraw(){const c=conNow();const C=W.concert;if(!c||!C)return;conBar.innerHTML='';const s0=conStart();const idx=clamp(Math.floor((S.t-s0)/60),-1,c.lineup.length);
+  conBar.append(el('div','cap',S.t<s0?'Doors open · show starts at '+fmtTime(c.hour*60):idx<c.lineup.length?'🎤 Now on stage: '+esc(c.lineup[Math.min(idx,c.lineup.length-1)]):'The show is over'));
+  const B=(t,fn,on,dis)=>{const b=el('button',on?'on':null,t);if(dis)b.disabled=true;b.onclick=()=>{fn();conDraw();};conBar.append(b);};
+  B(C.dance?'💃 Dancing':'💃 Dance',()=>{C.dance=!C.dance;},C.dance);
+  B('🥤 Drink '+naira(1500),()=>{if(C.vip&&!C.freeDrink){C.freeDrink=1;toast('VIP','Free drink. Chilled.','good');}else if(!spend(1500,'Drink at the concert'))return toast('Not enough money','','bad');try{N('food',8);N('bladder',-12);N('fun',4);}catch(e){}});
+  B('📸 Selfie',()=>{if(!S.dataDays)return toast('No data','Your selfie can\'t upload without data.','bad');S.vibe.followers+=ri(8,40);S.vibe.posts.push({t:S.t,cap:'At '+c.title+' 🔥🎤',likes:ri(30,160),com:'"Omo you went?!"'});toast('VIBE','Posted. The likes are pouring in.','good');xp(10,'Concert selfie');});
+  B(C.front?'⭐ At the front':'⭐ Go to the front',()=>{if(!C.vip)return toast('VIP only','Upgrade at the Tickets app: VIP gets you to the barrier.','bad');C.front=true;P.x=VENUE.x+rnd(-2,2);P.z=VENUE.z-10;player.position.set(P.x,0,P.z);},C.front,false);
+  B('🚌 Leave',()=>leaveConcert());}
+function leaveConcert(over){if(!W.concert)return;fadeThen(()=>{musicStop();CON.g.visible=false;document.body.classList.remove('concert');conBar.hidden=true;W.concert=null;
+  const gp=freeNear(NAV,2,93,6);P.x=gp.x;P.z=gp.z;P.path=null;P.mode='idle';W.side=0;W.lpx=P.x;W.lpz=P.z;player.position.set(P.x,0,P.z);S.flags.lockPass=S.t+90;setCarLights(minOf(S.t)>=19*60||minOf(S.t)<6*60);
+  addMoodlet('Saw them live!',18,1440);setMood('Excited',300);toast('Back at school',over?'What a night. The shuttle drops everyone at the Main Gate. Your ears are still ringing.':'The shuttle drops you at the Main Gate.','good');S.stats.concerts=(S.stats.concerts||0)+1;save();});}
+/* every frame at the venue: lights, dancing, the camera */
+HOOKS.frame.push((dt,now)=>{const C=W.concert;if(!C||!CON.g)return;const c=conNow();const t=now/1000;CON.t+=dt;
+  CON.beams.forEach((b,i)=>{b.rotation.z=Math.sin(t*0.9+i)*0.5;b.rotation.x=Math.cos(t*0.7+i*1.3)*0.35;});CON.lamps.forEach((l,i)=>{l.intensity=1.6+Math.abs(Math.sin(t*3.4+i*1.7))*2.2;});
+  const s0=conStart();const idx=c?Math.floor((S.t-s0)/60):-1;
+  if(c&&idx!==C.artist){C.artist=idx;CON.stars.forEach((s,i)=>s.visible=i===Math.min(idx,2)&&idx>=0&&idx<c.lineup.length);screenDraw(c,idx<0?'STARTING SOON':idx<c.lineup.length?c.lineup[idx]:'THANK YOU BWARI!');conDraw();
+    if(idx>=0&&idx<c.lineup.length)toast('🎤 Now on stage',esc(c.lineup[idx]));}
+  if(c&&S.t>=s0+180&&!C.ending){C.ending=1;setTimeout(()=>leaveConcert(true),2500);}
+  CON.crowd.forEach((p,i)=>{if(!p.g.visible)return;pose(p.g,p.k,t*1.0+p.ph,dt);});CON.stars.forEach((s,i)=>{if(s.visible)pose(s,i===1?'cheer':'dance',t,dt);});
+  pose(player,C.dance?'dance':'stand',t,dt);player.position.set(P.x,0,P.z);player.rotation.y=Math.PI;
+  if(C.dance){try{N('fun',dt*0.6);N('energy',-dt*0.1);}catch(e){}}
+  /* camera: slow moves between a wide shot, the stage and you in the crowd */
+  const k=Math.floor(CON.t/7)%3;const vx=VENUE.x,vz=VENUE.z;let px,py,pz,ax,ay,az;
+  if(k===0){px=vx+Math.sin(t*0.12)*16;py=7;pz=vz+18;ax=vx;ay=4;az=vz-14;}
+  else if(k===1){px=vx+Math.sin(t*0.2)*5;py=3.2;pz=vz-8;ax=vx;ay=3.4;az=vz-18;}
+  else{px=P.x+2.4;py=2.2;pz=P.z+4.2;ax=P.x;ay=1.4;az=P.z-1;}
+  camera.position.set(px,py,pz);camera.lookAt(ax,ay,az);cam.tx=P.x;cam.tz=P.z;});
+/* nothing else happens to you while you're at the concert (no kidnapping on the road, no curfew catch) */
+{const _kt=kidnapTick;kidnapTick=function(){if(W.concert)return;return _kt.apply(this,arguments);};}
+HOOKS.minute.unshift(()=>{if(W.concert)S.flags.lockPass=Math.max(S.flags.lockPass||0,S.t+30);});
+
+/* hand the concert function to the online side */
+window.__concertSet=concertSet;setTimeout(()=>{try{const n=window.VLNet;if(n&&n.VL)n.VL.concertSet=concertSet;}catch(e){}},0);
+if(window.__QA)window.__CON={concertSet,goConcert,leaveConcert,ticketSheet,boardsDraw,CON};
+/* ---- src/carjack.js ---- */
+/* ================= DRIVE OR STEAL A CAR =================
+   Parked cars around campus and Bwari Junction. Tap one: you can hotwire it (18+ accounts) and drive it
+   with the normal driving controls. It is a crime: an alarm can go off, security can catch you, and while
+   you drive a stolen car the police can trace it. Sell it at Junction Autos' back yard, or ditch it. */
+const PARK_SPOTS=[[8.2,-19,Math.PI],[11.1,-19,Math.PI],[14,-19,Math.PI],[17,101.8,0],[33,101.8,0],[-50,124,Math.PI/2],[42,128,-Math.PI/2]];
+const PCOL=[[0xe8e2d0,'white'],[0x1f2d44,'navy'],[0x9a9a9a,'silver'],[0x7a2331,'wine'],[0x2b2b2b,'black'],[0x2f6b3e,'green'],[0xc9971c,'gold']];
+const PK=[];
+function parkSpawn(i){const [x,z,dir]=PARK_SPOTS[i];if(S&&S.car&&Math.hypot(S.car.x-x,S.car.z-z)<3)return;const [col,cn]=PCOL[(i*3+dayOf(S?S.t:0))%PCOL.length];const kind=i%3===2?'suv':'sedan';
+  const g=makeCar(col,kind);g.position.set(x,0,z);g.rotation.y=dir;g.userData.stealCar=i;outdoor.add(g);
+  raster(NAV,{c:0,x,z,w:3.0,d:6.0,a:dir},0.3,NAV.dyn,1);PK[i]={g,x,z,dir,col,cn,kind};}
+function parkClear(i){const p=PK[i];if(!p)return;if(p.g.parent)p.g.parent.remove(p.g);raster(NAV,{c:0,x:p.x,z:p.z,w:3.0,d:6.0,a:p.dir},0.3,NAV.dyn,0);PK[i]=null;}
+function parkAll(){PARK_SPOTS.forEach((_,i)=>{parkClear(i);parkSpawn(i);});}
+HOOKS.boot.push(()=>{parkAll();ownCarShow();});HOOKS.day.push(()=>{if(!W.drive)parkAll();});
+
+/* your own car stays parked where you left it while you drive a stolen one */
+let ownG=null;function ownCarShow(){if(ownG){outdoor.remove(ownG);ownG=null;}const o=S&&S.ownCar;if(!o)return;ownG=makeCar(o.col,o.model==='jeep'?'suv':'sedan');ownG.position.set(o.x,0,o.z);ownG.rotation.y=o.dir;}
+function restoreOwn(){if(S.car)carDyn(false);S.car=S.ownCar||null;S.ownCar=null;ownCarShow();buildMyCar();if(S.car)carDyn(true);save();}
+
+/* tap a parked car */
+{const _t=onTap;onTap=function(cx,cy){try{if(S&&!S.inside&&!busy()&&!W.drive&&!W.concert){const r=cv.getBoundingClientRect();mv.x=(cx-r.left)/r.width*2-1;mv.y=-(cy-r.top)/r.height*2+1;ray.setFromCamera(mv,camera);
+  const gs=PK.filter(Boolean).map(p=>p.g);const hit=ray.intersectObjects(gs,true)[0];if(hit&&hit.distance<70){let o=hit.object;while(o&&o.userData.stealCar==null)o=o.parent;if(o){carSheet(o.userData.stealCar);return;}}}}catch(e){}return _t.apply(this,arguments);};}
+function carSheet(i){const p=PK[i];if(!p)return;const wrap=el('div');wrap.style.display='grid';wrap.style.gap='8px';const near=Math.hypot(P.x-p.x,P.z-p.z)<7;
+  wrap.append(el('div','note','A '+p.cn+' '+(p.kind==='suv'?'SUV':'saloon')+'. Nobody around'+(minOf(S.t)>=20*60||minOf(S.t)<6*60?' this late.':'… for now.')));
+  const opt=(t,s,fn,dis)=>{const b=el('button','opt','<div class="l"><b>'+t+'</b><span>'+(dis||s)+'</span></div>');if(dis)b.disabled=true;b.onclick=()=>{closeSheet();fn();};wrap.append(b);};
+  opt('Steal this car','Hotwire it and drive off · an alarm or security means big trouble',()=>stealCar(i),!mature()?'Not available on this account':S.car&&S.car.stolen?'You are already driving a stolen car':null);
+  opt('Look through the window','Harmless',()=>toast('Parked car',pick(['A rosary on the mirror and a Bible on the dashboard.','Three empty Fanta bottles and a lecture timetable.','A "Baby on board" sticker. On a campus car.'])));
+  if(!S.car)wrap.append(el('div','note','Want a car of your own? Junction Autos, out of the Main Gate, sells tokunbo cars for cash or hire purchase.'));
+  openSheet('Parked car',near?'Right here':'Walk over first',wrap);}
+function stealCar(i){const p=PK[i];if(!p)return;const door={x:p.x-Math.cos(p.dir)*2.2,z:p.z+Math.sin(p.dir)*2.2};
+  const go=()=>scRun('steal',async()=>{scStart();const me=csActor({g:player,x:P.x,z:P.z,keep:true,sp:3});player.visible=true;me.face={x:p.x,z:p.z};me.pose='look';
+    csShot([door.x+Math.sin(p.dir)*5+3,2.8,door.z+Math.cos(p.dir)*5],[p.x,1,p.z],1.8);CS.camInit=false;csCaption('Hotwiring','Look around… nobody?');await scWait(1200);
+    me.pose='kneel';await scWait(1800);csCaption(null);
+    const alarm=chance(0.3);let caught=false;
+    if(alarm){csCaption('🚨 ALARM','The car screams. Lights flash.');const V=p.g.userData.V;const t0=performance.now();const blink=setInterval(()=>{if(!CS.on){clearInterval(blink);return;}sfx('horn');},420);
+      await scWait(1800);clearInterval(blink);csCaption(null);const guardNear=guards.some(g=>!g.hidden&&Math.hypot(g.x-p.x,g.z-p.z)<45);caught=chance(guardNear?0.75:0.4)&&onCampus(p.x,p.z)||chance(0.25);}
+    W.stealOut=caught?'caught':'ok';me.pose='stand';});
+  const finish=()=>{if(W.stealOut==='caught'){W.stealOut=null;return stealCaught(false);}W.stealOut=null;
+    /* it's yours… for now */
+    if(S.car&&!S.car.stolen){S.ownCar=S.car;S.car=null;}parkClear(i);
+    S.car={model:p.kind==='suv'?'jeep':'saloon',n:'Stolen '+p.cn+' '+(p.kind==='suv'?'SUV':'saloon'),col:p.col,fuel:rnd(5,18),cond:rnd(55,90),x:p.x,z:p.z,dir:p.dir,sticker:false,km:0,stolen:true,stolenAt:S.t};
+    ownCarShow();buildMyCar();S.flags.carThefts=(S.flags.carThefts||0)+1;addMoodlet('Adrenaline',6,180);P.x=door.x;P.z=door.z;enterCar();
+    toast('You\'re in','The engine coughs and starts. Drive. Sell it at Junction Autos\' back yard, or ditch it before the police trace it.','bad');};
+  if(Math.hypot(P.x-door.x,P.z-door.z)<2.5)go().then(finish);else{const pth=navPath(P,door);if(!pth)return toast('Can\'t reach it','Walk closer to the car first.');P.path=pth;P.i=0;P.mode='walk';S.at=null;W.after=()=>go().then(finish);}}
+function stealCaught(driving){const fine=driving?60000:30000;
+  dialog({who:'security',kicker:driving?'Stopped in a stolen car':'Caught stealing a car',warn:'Car theft goes straight to the disciplinary panel, or to the police.',text:driving?'Flashing lights behind you. The police wave you to the side. "This car was reported stolen. Come down. Hands where I can see them."':'A security officer grabs your collar before you can stand up. "Thief! You want to steal oga\'s car?"',choices:[
+    {t:'Beg and pay ('+naira(fine)+')',fn:()=>{if(!spend(fine,'Settled the car theft'))return caughtFinal(driving,'You don\'t have the money. They take you in.');if(bribeOk(0.55)){if(driving)dropStolen();S.suspicion+=15;return 'They take the money, take the car back to its owner and let you go with a warning you won\'t forget.';}return caughtFinal(driving,'Another officer sees the money change hands. Now it\'s bribery too.');}},
+    {t:'Accept it',fn:()=>caughtFinal(driving,'They take you in.')}]});}
+function caughtFinal(driving,why){if(driving)dropStolen();addDiscipline(6,'Car theft');tigerBeat('theft');S.suspicion+=25;setMood('Sad',720);
+  if(S.discipline>=8&&!S.over)setTimeout(()=>endLife('suspended','car theft'),400);return why+' Six points on your record and a night at the station.';}
+function dropStolen(){if(!S.car||!S.car.stolen)return;if(W.drive){W.drive=null;$('#drive').hidden=true;$('#nav').hidden=false;player.visible=true;const fp=freeNear(NAV,S.car.x,S.car.z,8);P.x=fp.x;P.z=fp.z;}carDyn(false);if(myCarG){outdoor.remove(myCarG);myCarG=null;}S.car=null;restoreOwn();}
+/* the police can trace a stolen car while you drive it */
+HOOKS.minute.push(()=>{const c=S&&S.car;if(!c||!c.stolen||S.over||busy()||CS.on)return;const mins=S.t-(c.stolenAt||S.t);
+  if(W.drive){let p=0.006+Math.min(0.02,mins/6000);if(onCampus(c.x,c.z)&&guards.some(g=>!g.hidden&&Math.hypot(g.x-c.x,g.z-c.z)<25))p+=0.05;if(chance(p)){W.drive.v=0;stealCaught(true);}}
+  else if(mins>1440*2&&chance(0.01)){toast('Stolen car found','The police found the stolen car where you left it and towed it away. Nobody saw you… this time.','bad');dropStolen();}});
+/* extra choices in the car menu for a stolen car */
+{const _oc=openCar;openCar=function(){const r=_oc.apply(this,arguments);try{const c=S.car;if(c&&c.stolen&&UI.sheet){const box=$('#shB');const near=Math.hypot(P.x-LOCS.autos.x,P.z-LOCS.autos.z)<20||Math.hypot(c.x-LOCS.autos.x,c.z-LOCS.autos.z)<20;
+  const val=Math.round((c.model==='jeep'?650000:320000)*0.22/1000)*1000;
+  const mk=(t,s,fn,dis)=>{const b=el('button','opt','<div class="l"><b>'+t+'</b><span>'+(dis||s)+'</span></div>');if(dis)b.disabled=true;b.onclick=()=>{closeSheet();fn();};box.prepend(b);};
+  mk('Ditch the stolen car','Walk away and leave it here',()=>{dropStolen();toast('Ditched','You wipe the steering wheel and walk away fast.');});
+  mk('Sell it at the back yard ('+naira(val)+')','Junction Autos\' back yard asks no questions',()=>{if(chance(0.15))return stealCaught(false);earn(val,'Sold a stolen car');dropStolen();S.skills.street+=0.2;toast('Sold',naira(val)+' in cash, no receipt.','bad');},near?null:'Drive it to Junction Autos first');}}catch(e){}return r;};}
+if(window.__QA)window.__CJ={PK,stealCar,carSheet,parkAll,dropStolen};
 /*@@END MODULES@@*/
 /* ================= LOOP ================= */
 let last=performance.now(),gtimer=0;const v3=new THREE.Vector3();let tYaw=0.2;
@@ -4946,7 +5973,7 @@ function frame(now){requestAnimationFrame(frame);if(S&&player){player.userData.m
   const ty=inside?1.6:0;const ux=Math.sin(cam.yaw)*Math.cos(cam.cp),uy=Math.sin(cam.cp),uz=Math.cos(cam.yaw)*Math.cos(cam.cp);
   const want=!inside&&!map?camClear(cam.tx,ty+1.4,cam.tz,ux,uy,uz,cam.cd):cam.cd;cam.eff=cam.eff==null?want:cam.eff+(want-cam.eff)*Math.min(1,dt*(want<cam.eff?9:2.2));
   camera.position.set(cam.tx+ux*cam.eff,Math.max(0.9,ty+uy*cam.eff),cam.tz+uz*cam.eff);camera.lookAt(cam.tx,ty,cam.tz);csFrame(dt,now);for(const f of HOOKS.frame)f(dt,now);updDoors(dt,now);
-  sky();if(!window.__QA_NR)renderer.render(scene,camera);labels();updFloats(dt);updPrompt();tweenMoney(dt);
+  sky();if(!window.__QA_NR&&!(W.lowR&&((W.lrN=(W.lrN||0)+1)%6)))renderer.render(scene,camera);labels();updFloats(dt);updPrompt();tweenMoney(dt);
   if(now-(W.hudT||0)>250){W.hudT=now;hud();placeObj();}
   W.fpsN++;W.fpsT+=dt;if(W.fpsT>4){const fps=W.fpsN/W.fpsT;W.fpsN=0;W.fpsT=0;if(fps<24&&Q!=='low'&&!W.fpsWarned&&!CS.on){W.fpsWarned=true;toast('Running slow','Lower the graphics in Profile → Settings for smoother play.');}}}
 function titleCam(dt,now){if(!player)return;if(!drag)tYaw+=dt*0.15;const narrow=camera.aspect<0.9;const d=narrow?7.2:6.4;const tx=player.position.x,tz=player.position.z;

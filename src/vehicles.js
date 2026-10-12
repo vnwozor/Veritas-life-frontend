@@ -41,6 +41,14 @@ function buildVehicle(kind,color,o){o=o||{};const P2=VPROF[kind],g=new THREE.Gro
     if(kind!=='bus'){const mz=kind==='pickup'?0.62:kind==='suv'?0.62:0.95;part(G.box,BM,0.18,0.1,0.07,s*(W/2+0.07),kind==='sedan'?1.08:1.2,mz,b,false);}});
   const pl=new THREE.Mesh(new THREE.PlaneGeometry(0.42,0.2),new THREE.MeshBasicMaterial({map:plateTex(o.plate||('KUJ '+ri(100,999)+' '+pick(['AA','BW','GW','KD','AB']))) }));pl.position.set(0,0.55,zr-0.11);pl.rotation.y=Math.PI;b.add(pl);
   if(o.taxi){part(G.box,0xf2c230,0.08,0.06,P2.L*0.7,W/2-0.02,0.82,0,b,false);part(G.box,0xf2c230,0.08,0.06,P2.L*0.7,-W/2+0.02,0.82,0,b,false);}
+  // front detailing (grille bars, badge, lamp inserts, lower lip, parking sensors and tail-lamp accents). The idea and the
+  // shapes come from the ChatGPT pass; the duplicate mirrors/handles it also added are left out, and everything is merged below.
+  if(kind!=='bus'){const gw=kind==='pickup'?0.72:kind==='suv'?0.58:0.48,gh=kind==='pickup'?0.27:0.20;
+    part(G.box,0x111820,gw,gh,0.045,0,0.66,zf+0.055,b,false);for(let gi=0;gi<4;gi++)part(G.box,VLIGHT.chrome,gw*0.88,0.018,0.018,0,0.66-gh*0.34+gi*gh*0.22,zf+0.083,b,false);
+    part(G.box,0xbfc9d0,0.12,0.12,0.025,0,0.66,zf+0.09,b,false);
+    [-1,1].forEach(side=>{const hx=side*(W/2-0.30),hy=kind==='suv'?0.91:0.79;part(G.box,0xffe4a0,0.12,0.035,0.04,hx,hy,zf+0.098,b,false);part(G.box,0xfff1d6,0.20,0.025,0.02,hx,hy-0.06,zf+0.10,b,false);
+      part(G.box,0xff3d35,0.20,0.07,0.035,side*(W/2-0.25),kind==='suv'?0.86:0.69,zr-0.045,b,false);});
+    [-0.55,0.55].forEach(x=>part(G.cyl,0x333b42,0.035,0.025,0.035,x,0.47,zf+0.13,b,false));part(G.box,0x20262b,W*0.82,0.055,0.08,0,0.37,zf+0.07,b,false);}
   // doors: panel pivots on the front edge; a dark opening shows behind when open
   const doors={};const dy=kind==='bus'?1.2:kind==='sedan'?0.68:0.8,dh=kind==='bus'?1.6:kind==='sedan'?0.52:0.6;
   const dz=kind==='pickup'?[[-0.05,0.95]]:kind==='bus'?[[2.2,1.0]]:[[0.15,1.0],[-0.9,0.95]];
@@ -63,7 +71,21 @@ function buildVehicle(kind,color,o){o=o||{};const P2=VPROF[kind],g=new THREE.Gro
   const sw=new THREE.Group();sw.position.set(-W/2+0.55,kind==='bus'?1.5:1.0,kind==='bus'?2.4:0.35);b.add(sw);const swr=part(G.torus,VLIGHT.trim,0.16,0.16,0.4,0,0,0,sw,false);swr.rotation.x=-0.5;
   [[-W/2+0.55,0.1],[W/2-0.55,0.1],[0,-0.75]].forEach(([x,z])=>{if(kind!=='bus')part(G.box,0x2a2420,kind==='pickup'&&z<0?0.01:0.5,0.5,0.12,x,0.95,z-0.2,b,false);});
   g.scale.setScalar(o.scale||1.42);if(o.add!==false)outdoor.add(g);
+  vMerge(b);wheels.forEach(w=>vMerge(w.spin));
   const V={g,b,kind,doors,boot,wheels,sw:swr,dir:0,x:0,z:0,rd:0,steer:0};return V;}
+/* every static part of the body that shares a material becomes one mesh: a car is drawn with ~15 calls instead of ~80.
+   Doors, boot lid, wheels and the hidden door/boot openings stay separate because they move or toggle. */
+const _mv=new THREE.Vector3(),_mn=new THREE.Vector3(),_m3=new THREE.Matrix3();
+function vMerge(b){const groups=new Map();b.children.slice().forEach(m=>{if(!m.isMesh||!m.visible)return;m.updateMatrix();const k=m.material.uuid;if(!groups.has(k))groups.set(k,{mat:m.material,list:[]});groups.get(k).list.push(m);});
+  groups.forEach(gr=>{if(gr.list.length<2)return;let nv=0,ni=0,uv=true;gr.list.forEach(m=>{const g=m.geometry;nv+=g.attributes.position.count;ni+=g.index?g.index.count:g.attributes.position.count;if(!g.attributes.uv)uv=false;});
+    const pos=new Float32Array(nv*3),nor=new Float32Array(nv*3),uvs=uv?new Float32Array(nv*2):null,idx=nv>65535?new Uint32Array(ni):new Uint16Array(ni);let vo=0,io=0,cast=false;
+    gr.list.forEach(m=>{const g=m.geometry,p=g.attributes.position,n=g.attributes.normal,t=g.attributes.uv;_m3.getNormalMatrix(m.matrix);
+      for(let i=0;i<p.count;i++){_mv.fromBufferAttribute(p,i).applyMatrix4(m.matrix);pos[(vo+i)*3]=_mv.x;pos[(vo+i)*3+1]=_mv.y;pos[(vo+i)*3+2]=_mv.z;
+        if(n){_mn.fromBufferAttribute(n,i).applyMatrix3(_m3).normalize();nor[(vo+i)*3]=_mn.x;nor[(vo+i)*3+1]=_mn.y;nor[(vo+i)*3+2]=_mn.z;}if(uvs){uvs[(vo+i)*2]=t.getX(i);uvs[(vo+i)*2+1]=t.getY(i);}}
+      if(g.index){for(let i=0;i<g.index.count;i++)idx[io++]=g.index.getX(i)+vo;}else for(let i=0;i<p.count;i++)idx[io++]=vo+i;
+      vo+=p.count;cast=cast||m.castShadow;b.remove(m);});
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.BufferAttribute(nor,3));if(uvs)geo.setAttribute('uv',new THREE.BufferAttribute(uvs,2));geo.setIndex(new THREE.BufferAttribute(idx,1));geo.computeBoundingSphere();
+    const mesh=new THREE.Mesh(geo,gr.mat);mesh.castShadow=cast;mesh.receiveShadow=true;mesh.userData.merged=1;b.add(mesh);});}
 /* roll the wheels by distance, steer the fronts, swing doors and boot */
 function vehAnim(V,dist,steer,dt){V.wheels.forEach(w=>{w.spin.rotation.x+=dist/(w.r*(V.g.scale.x||1));if(w.front)w.st.rotation.y+=((steer||0)-w.st.rotation.y)*Math.min(1,(dt||0.016)*8);});if(V.sw)V.sw.rotation.z=-(steer||0)*2.2;
   const k=Math.min(1,(dt||0.016)*3.2);for(const id in V.doors){const d=V.doors[id];d.a+=(d.t-d.a)*k;d.piv.rotation.y=-d.s*d.a*1.1;d.hole.visible=d.a>0.05;}

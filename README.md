@@ -5,7 +5,7 @@ The whole online game runs on one Vercel project. Real players are students; all
 | URL | What |
 |---|---|
 | `/` | The game: players log in with `VUG/26/<matric number>` and a password |
-| `/admin` | Your admin website: stats, players, live activity, **🚨 Send bandits** |
+| admin website (separate project) | Stats, players, live activity, 🚨 Send bandits, **₦ Give money** (one player by matric/username, the first N players, everyone online, every player), **🎤 Concert** (lineup, day, time, ticket prices) |
 | `/api/*` | The game server (one Vercel Function) |
 
 The data lives in **Upstash Redis**, added from the Vercel Marketplace (it has a free plan). Players sync with the server every 1–2.5 seconds.
