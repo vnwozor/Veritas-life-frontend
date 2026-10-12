@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const R = require('../lib/redis');
 const mailer = require('../lib/mail');
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (process.env.VERCEL ? '' : 'change-me-now');
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (process.env.VERCEL || process.env.ON_CLOUDFLARE ? '' : 'change-me-now');
 const PAYMENTS_MODE = process.env.PAYMENTS_MODE || 'test';
 const PACKS = { p1: { ng: 1000, coins: 50000 }, p5: { ng: 5000, coins: 250000 }, p20: { ng: 20000, coins: 1000000 } };
 const MATRIC = /^VUG\/26\/[A-Z0-9]{2,12}(\/[A-Z0-9]{1,8})?$/;
@@ -47,12 +47,15 @@ async function logEvent(type, uid, data) {
   if (uid) cmds.push(['LPUSH', 'uev:' + uid, e], ['LTRIM', 'uev:' + uid, 0, 39]);
   await R.pipe(cmds);
 }
-async function addEffect(uid, type, data) { const id = await R.cmd('INCR', 'seq:fx'); await R.cmd('HSET', 'fxh:' + uid, id, JSON.stringify({ id, type, data: data || {} })); }
-async function inbox(uid, msg) { await R.pipe([['RPUSH', 'inbox:' + uid, JSON.stringify(msg)], ['EXPIRE', 'inbox:' + uid, 86400]]); }
+async function addEffect(uid, type, data) { const id = await R.cmd('INCR', 'seq:fx'); await R.cmd('HSET', 'fxh:' + uid, id, JSON.stringify({ id, type, data: data || {} })); poke(uid); }
+async function inbox(uid, msg) { await R.pipe([['RPUSH', 'inbox:' + uid, JSON.stringify(msg)], ['EXPIRE', 'inbox:' + uid, 86400]]); poke(uid); }
 async function onlineIds() { return (await R.cmd('ZRANGEBYSCORE', 'z:online', now() - ONLINE_MS, '+inf')).map(Number); }
+const STAT_AT = new Map();
 async function storeState(uid, st) {
   if (!st || typeof st !== 'object') return;
   const status = st.captive ? 'kidnapped' : st.over ? 'ended' : st.graduated ? 'graduated' : 'ok';
+  /* the full save is kept current; the summary the admin page reads is refreshed at most every 2 minutes */
+  const t0 = now(); if (STAT_AT.get(uid) > t0 - 120000 && !st.over && !st.captive) { await R.cmd('SET', 'state:' + uid, JSON.stringify(st)); return; } STAT_AT.set(uid, t0);
   await R.pipe([['SET', 'state:' + uid, JSON.stringify(st)], ['HSET', 'user:' + uid, 'name', clean(st.name), 'female', st.look && st.look.female ? 1 : 0, 'money', Math.round((st.money || 0) + (st.savings || 0)), 'level', st.level || 100,
     'day', Math.floor((st.t || 0) / 1440) + 1, 'discipline', st.discipline || 0, 'cgpa', st.cgpa || 0, 'status', status, 'restarts', st.restarts || 0, 'place', clean(st.at), 'last_seen', now()], ['ZADD', 'z:seen', now(), uid]]);
 }
@@ -149,6 +152,38 @@ async function adminStats() {
     wildest: played.slice().sort((a, b) => b.discipline - a.discipline).slice(0, 5).map(u => ({ id: u.id, name: u.name, matric: u.matric, discipline: u.discipline, level: u.level })), payments: PAYMENTS_MODE };
 }
 async function onlineList() { const ids = await onlineIds(); if (!ids.length) return []; const ps = (await R.cmd('MGET', ...ids.map(i => 'pos:' + i))).map(J); return ids.map((id, i) => ps[i] && { id, name: ps[i].name, lvl: ps[i].lvl, loc: ps[i].loc, st: ps[i].st, female: !!ps[i].female }).filter(Boolean); }
+
+/* ---------- one sync: your position and messages go up; nearby players, messages and effects come back.
+   Used by /api/sync (Vercel) and by the live connection on your own server. Only players in the same place
+   are read, so the cost per sync stays small however many students are online. ---------- */
+const SEEN_AT = new Map();
+async function doSync(me, b) {
+  const out = [];
+  for (const m of (Array.isArray(b.out) ? b.out.slice(0, 40) : [])) { try { await handle(me, m, out); } catch (e) { console.error('handle', m && m.t, e); } }
+  const t = now(); const pos = b.pos && typeof b.pos === 'object' ? b.pos : null; const myLoc = pos ? String(pos.loc || 'out').slice(0, 40) : null;
+  /* last_seen is written at most once a minute per player (fewer database writes) */
+  const seenW = !(SEEN_AT.get(me) > t - 60000); if (seenW) SEEN_AT.set(me, t);
+  const cmds = [['ZADD', 'z:online', t, me], seenW ? ['HSET', 'user:' + me, 'last_seen', t] : ['HGET', 'user:' + me, 'last_seen'], ['HGETALL', 'fxh:' + me], ['LRANGE', 'inbox:' + me, 0, -1], ['DEL', 'inbox:' + me]];
+  if (myLoc) cmds.push(['ZRANGEBYSCORE', 'zl:' + myLoc, t - ONLINE_MS, '+inf']);
+  if (b.online) cmds.push(['ZRANGEBYSCORE', 'z:online', t - ONLINE_MS, '+inf']);
+  if (pos) cmds.unshift(['SET', 'pos:' + me, JSON.stringify({ x: +pos.x || 0, z: +pos.z || 0, dir: +pos.dir || 0, loc: myLoc, anim: String(pos.anim || 'stand').slice(0, 16), lvl: +pos.lvl || 100, name: clean(pos.name), look: pos.look || null, st: String(pos.st || '').slice(0, 16), female: !!pos.female, ts: t }), 'EX', 30], ['ZADD', 'zl:' + myLoc, t, me]);
+  const r = await R.pipe(cmds); const o = pos ? 2 : 0;
+  const fx = Object.values(R.hash(r[o + 2])).map(J).filter(Boolean).sort((a, c) => a.id - c.id);
+  const inb = r[o + 3].map(J).filter(Boolean);
+  let k = o + 5; const near = myLoc ? r[k++].map(Number).filter(i => i !== me).slice(0, 60) : []; const onIds = b.online ? r[k++].map(Number) : null;
+  if (Math.random() < 0.01) { await R.cmd('ZREMRANGEBYSCORE', 'z:online', '-inf', t - 120000); if (myLoc) await R.cmd('ZREMRANGEBYSCORE', 'zl:' + myLoc, '-inf', t - 120000); }
+  let pres = [], online = null;
+  if (near.length) { const ps = (await R.cmd('MGET', ...near.map(i => 'pos:' + i))).map(J);
+    pres = near.map((id, i) => ps[i] && Object.assign({ id }, ps[i])).filter(x => x && x.loc === myLoc && x.anim !== 'hidden').map(x => ({ id: x.id, name: x.name, look: x.look, x: x.x, z: x.z, dir: x.dir, anim: x.anim, lvl: x.lvl, st: x.st })); }
+  if (onIds) { const ids = onIds.filter(i => i !== me).slice(0, 200); const ps = ids.length ? (await R.cmd('MGET', ...ids.map(i => 'pos:' + i))).map(J) : [];
+    online = ids.map((id, i) => ps[i] && { id, name: ps[i].name, lvl: ps[i].lvl, loc: ps[i].loc, st: ps[i].st, female: !!ps[i].female }).filter(Boolean);
+    if (pos) online.unshift({ id: me, name: clean(pos.name), lvl: +pos.lvl || 100, loc: myLoc, st: pos.st, female: !!pos.female }); }
+  const msgs = [...inb, ...out]; if (fx.length) msgs.push({ t: 'fx', list: fx }); msgs.push({ t: 'pres', list: pres }); if (online) msgs.push({ t: 'online', list: online });
+  if (inb.some(x => x.t === 'banned')) return { code: 403, body: { error: 'banned', in: msgs } };
+  return { code: 200, body: { in: msgs, others: near.length } };
+}
+/* the live-connection server pokes a player the moment something arrives for them */
+const pokers = []; function poke(uid) { for (const f of pokers) { try { f(+uid); } catch (e) { } } }
 
 /* ---------- router ---------- */
 module.exports = async function handler(req, res) {
@@ -258,7 +293,7 @@ module.exports = async function handler(req, res) {
         if (!ids.length) return send(res, 400, { error: 'Nobody to send to.' });
         const label = String(b.note || '').slice(0, 60) || (amt > 0 ? 'Gift from the game admin' : 'Taken by the game admin');
         for (let i = 0; i < ids.length; i += 200) { const chunk = ids.slice(i, i + 200); const seq = await R.cmd('INCRBY', 'seq:fx', chunk.length);
-          await R.pipe(chunk.map((id, k) => { const fid = seq - chunk.length + 1 + k; return ['HSET', 'fxh:' + id, fid, JSON.stringify({ id: fid, type: amt > 0 ? 'credit' : 'debit', data: { amount: Math.abs(amt), label } })]; })); }
+          await R.pipe(chunk.map((id, k) => { const fid = seq - chunk.length + 1 + k; return ['HSET', 'fxh:' + id, fid, JSON.stringify({ id: fid, type: amt > 0 ? 'credit' : 'debit', data: { amount: Math.abs(amt), label } })]; })); chunk.forEach(poke); }
         if (ids.length === 1) await logEvent('admin_money', ids[0], { amount: amt }); else await logEvent('admin_money_bulk', null, { amount: amt, to: ids.length, target: b.target });
         return send(res, 200, { ok: true, to: ids.length }); }
       /* concert: the admin sets the lineup, day and ticket price; everyone gets the news and posters go up on campus */
@@ -296,7 +331,7 @@ module.exports = async function handler(req, res) {
       if (b.age != null && !u.age) { const a = Math.floor(+b.age); if (!(a >= 15 && a <= 70)) return send(res, 400, { error: 'Enter your real age.' }); set.push('age', a, 'adult', a >= 18 ? 1 : 0); }
       if (set.length) await R.cmd('HSET', 'user:' + me, ...set); return send(res, 200, { user: own(await user(me)) });
     }
-    if (p === 'state' && req.method === 'POST') { await storeState(me, b.state); return send(res, 200, { ok: true }); }
+    if (p === 'state' && req.method === 'POST') { STAT_AT.delete(me); await storeState(me, b.state); await R.flush('state:' + me); return send(res, 200, { ok: true }); }
     if (p === 'players') {
       const qq = String(q('q') || '').trim().toLowerCase(); const ids = (await R.cmd('ZREVRANGE', 'z:seen', 0, 999)).map(Number).filter(i => i !== me); const on = new Set(await onlineIds());
       const list = (await users(ids)).filter(x => x.name && !x.banned && (x.name.toLowerCase().includes(qq) || x.matric.toLowerCase().includes(qq) || (x.username && x.username.includes(qq.replace(/^@/, ''))))).slice(0, 60);
@@ -316,27 +351,11 @@ module.exports = async function handler(req, res) {
       await addEffect(me, 'credit', { amount: pk.coins, label: 'Top-up (test mode)' }); await logEvent('purchase', me, { pack: b.pack, ng: pk.ng, coins: pk.coins, mode: 'test' });
       return send(res, 200, { ok: true, coins: pk.coins, mode: 'test' });
     }
-    if (p === 'sync' && req.method === 'POST') {
-      const out = [];
-      for (const m of (Array.isArray(b.out) ? b.out.slice(0, 40) : [])) { try { await handle(me, m, out); } catch (e) { console.error('handle', m && m.t, e); } }
-      const t = now(); const pos = b.pos && typeof b.pos === 'object' ? b.pos : null;
-      const cmds = [['ZADD', 'z:online', t, me], ['HSET', 'user:' + me, 'last_seen', t], ['HGETALL', 'fxh:' + me], ['LRANGE', 'inbox:' + me, 0, -1], ['DEL', 'inbox:' + me], ['ZRANGEBYSCORE', 'z:online', t - ONLINE_MS, '+inf']];
-      if (pos) cmds.unshift(['SET', 'pos:' + me, JSON.stringify({ x: +pos.x || 0, z: +pos.z || 0, dir: +pos.dir || 0, loc: String(pos.loc || 'out').slice(0, 40), anim: String(pos.anim || 'stand').slice(0, 16), lvl: +pos.lvl || 100, name: clean(pos.name), look: pos.look || null, st: String(pos.st || '').slice(0, 16), female: !!pos.female, ts: t }), 'EX', 20]);
-      const r = await R.pipe(cmds); const o = pos ? 1 : 0;
-      const fx = Object.values(R.hash(r[o + 2])).map(J).filter(Boolean).sort((a, c) => a.id - c.id);
-      const inb = r[o + 3].map(J).filter(Boolean);
-      const ids = r[o + 5].map(Number).filter(i => i !== me);
-      if (Math.random() < 0.02) await R.cmd('ZREMRANGEBYSCORE', 'z:online', '-inf', t - 120000);
-      let pres = [], online = null;
-      if (ids.length) { const ps = (await R.cmd('MGET', ...ids.map(i => 'pos:' + i))).map(J); const myLoc = pos ? String(pos.loc || 'out') : null;
-        pres = ids.map((id, i) => ps[i] && Object.assign({ id }, ps[i])).filter(x => x && x.loc === myLoc && x.anim !== 'hidden').map(x => ({ id: x.id, name: x.name, look: x.look, x: x.x, z: x.z, dir: x.dir, anim: x.anim, lvl: x.lvl, st: x.st }));
-        if (b.online) online = ids.map((id, i) => ps[i] && { id, name: ps[i].name, lvl: ps[i].lvl, loc: ps[i].loc, st: ps[i].st, female: !!ps[i].female }).filter(Boolean); }
-      else if (b.online) online = [];
-      if (online) { const mp = pos ? { id: me, name: clean(pos.name), lvl: +pos.lvl || 100, loc: pos.loc, st: pos.st, female: !!pos.female } : null; if (mp) online.unshift(mp); }
-      const msgs = [...inb, ...out]; if (fx.length) msgs.push({ t: 'fx', list: fx }); msgs.push({ t: 'pres', list: pres }); if (online) msgs.push({ t: 'online', list: online });
-      if (inb.some(x => x.t === 'banned')) return send(res, 403, { error: 'banned', in: msgs });
-      return send(res, 200, { in: msgs, others: ids.length });
-    }
+    if (p === 'sync' && req.method === 'POST') { const r = await doSync(me, b); return send(res, r.code, r.body); }
     return send(res, 404, { error: 'Not found' });
   } catch (e) { console.error(e); return send(res, 500, { error: 'Server error' }); }
 };
+/* for the live-connection server (server.js) */
+module.exports.doSync = doSync;
+module.exports.sessionUser = async t => { const id = t && await R.cmd('GET', 'sess:' + t); if (!id) return null; const u = await user(id); return u && !u.banned ? +id : null; };
+module.exports.pokers = pokers;

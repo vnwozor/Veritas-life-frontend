@@ -129,21 +129,47 @@
   /* Vercel version: no long-lived socket. The game syncs with /api/sync every 1–2.5 s
      (faster when other players are around or the phone is open). */
   N.out = []; N.pos = null; let syncing = false, syncT = null, nSync = 0, fails = 0;
-  function connect() { if (stopWS) return; N.ws = { readyState: 1 }; wsSend({ t: 'threads' }); wsSend({ t: 'groups' }); schedule(30); }
+  /* Live connection (on your own server): one WebSocket stays open, syncs go over it, and the server
+     pokes us the moment something arrives. On Vercel there is no /ws, so we quietly use /api/sync. */
+  let live = null, liveTried = false, liveBack = 2000, reqId = 0; const waiting = new Map();
+  function openLive() { if (stopWS || live || !('WebSocket' in window)) return; liveTried = true; let ws;
+    try { const base = BASE ? BASE.replace(/^http/, 'ws') : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host; ws = new WebSocket(base + '/ws?token=' + encodeURIComponent(N.token)); } catch (e) { return; }
+    let ok = false; const giveUp = setTimeout(() => { if (!ok) try { ws.close(); } catch (e) { } }, 5000);
+    ws.onmessage = ev => { let m = null; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.t === 'auth') { if (m.ok) { ok = true; clearTimeout(giveUp); live = ws; liveBack = 2000; N.live = true; schedule(50); } else { try { ws.close(); } catch (e) { } } return; }
+      if (m.t === 'poke') { if (!syncing) schedule(40); return; }
+      if (m.t === 'sync') { const w = waiting.get(m.id); if (w) { waiting.delete(m.id); w(m); } } };
+    ws.onclose = () => { clearTimeout(giveUp); const was = live === ws; if (was) { live = null; N.live = false; } waiting.forEach(w => w(null)); waiting.clear();
+      if (was && !stopWS) { setTimeout(openLive, liveBack); liveBack = Math.min(30000, liveBack * 2); } };
+    ws.onerror = () => { }; }
+  function viaLive(payload) { return new Promise(res => { const id = ++reqId; payload.id = id; waiting.set(id, res); try { live.send(JSON.stringify(payload)); } catch (e) { waiting.delete(id); return res(null); }
+    setTimeout(() => { if (waiting.has(id)) { waiting.delete(id); res(null); } }, 8000); }); }
+  function connect() { if (stopWS) return; N.ws = { readyState: 1 }; wsSend({ t: 'threads' }); wsSend({ t: 'groups' }); schedule(30); openLive(); }
   function schedule(ms) { clearTimeout(syncT); syncT = setTimeout(sync, ms); }
+  let lastPos = null, still = 0;
   async function sync() {
     if (stopWS) return; if (syncing) { schedule(250); return; } syncing = true;
     const out = N.out.splice(0, 40); nSync++;
+    const pv = VL && VL.UI.phone ? VL.phoneView : null;
+    const wantOnline = pv === 'players' || pv === 'onew' || pv === 'pprof' || nSync % 10 === 1;
+    const payload = { out, pos: N.booted ? N.pos : null, online: wantOnline };
     try {
-      const r = await fetch(BASE + '/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + N.token }, body: JSON.stringify({ out, pos: N.booted ? N.pos : null, online: nSync % 3 === 1 }) });
-      let j = {}; try { j = await r.json(); } catch (e) { }
-      if (r.status === 401 || r.status === 403) { stopWS = true; try { localStorage.removeItem(TK); } catch (e) { } showGate(r.status === 403 ? 'This account has been banned by the game admin.' : 'Your session ended. Please log in again.'); return; }
-      if (!r.ok) throw new Error('sync ' + r.status);
-      fails = 0; (j.in || []).forEach(m => { try { onMsg(m); } catch (e) { console.error(e); } });
+      let code = 0, j = {};
+      const m = live ? await viaLive(payload) : null;
+      if (m) { code = m.code; j = m.body || {}; }
+      else { const r = await fetch(BASE + '/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + N.token }, body: JSON.stringify(payload) }); code = r.status; try { j = await r.json(); } catch (e) { } }
+      if (code === 401 || code === 403) { stopWS = true; try { localStorage.removeItem(TK); } catch (e) { } showGate(code === 403 ? 'This account has been banned by the game admin.' : 'Your session ended. Please log in again.'); return; }
+      if (code < 200 || code >= 300) throw new Error('sync ' + code);
+      fails = 0; (j.in || []).forEach(m2 => { try { onMsg(m2); } catch (e) { console.error(e); } });
     } catch (e) { N.out.unshift(...out.filter(o => o.t !== 'state' || !N.out.some(x => x.t === 'state'))); fails++; }
-    finally { syncing = false; N.dbg = { n: nSync, fails, at: Date.now(), out: N.out.length }; }
-    const busy = N.others.size > 0 || (VL && VL.UI.phone);
-    schedule(fails ? Math.min(15000, 1500 * fails) : N.out.length ? 120 : document.hidden ? 8000 : busy ? 1000 : 2500);
+    finally { syncing = false; N.dbg = { n: nSync, fails, at: Date.now(), out: N.out.length, live: !!live }; }
+    /* how soon to sync again: quick when chatting or near other players, slow when you're alone and still */
+    const p = N.pos; const moved = p && lastPos && (Math.abs(p.x - lastPos.x) + Math.abs(p.z - lastPos.z) > 0.5 || p.loc !== lastPos.loc); lastPos = p ? { x: p.x, z: p.z, loc: p.loc } : null; still = moved ? 0 : still + 1;
+    const chatting = pv === 'pchat' || pv === 'ogroup' || pv === 'players' || pv === 'pprof';
+    const near = N.others.size > 0;
+    let next = document.hidden ? 15000 : chatting ? (live ? 3000 : 1500) : near ? (moved ? 1500 : 3000) : still > 3 ? (live ? 8000 : 5000) : 3000;
+    if (N.out.length) next = 120; if (fails) next = Math.min(15000, 1500 * fails);
+    schedule(next);
   }
   function wsSend(o) { if (o.t === 'state') { const i = N.out.findIndex(x => x.t === 'state'); if (i >= 0) N.out.splice(i, 1); } N.out.push(o); if (o.t !== 'state' && !syncing) schedule(120); return true; }
   N.send = wsSend;

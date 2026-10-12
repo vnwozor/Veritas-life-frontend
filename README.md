@@ -1,3 +1,21 @@
+# VERITAS LIFE
+
+## Hosting on Cloudflare (recommended, free plan)
+The game files are served from Cloudflare's edge; the game server runs in one Durable Object (`cf/worker.js`)
+that keeps its data in its own SQLite storage. Players hold one live connection open instead of calling the
+server every second, which keeps a busy school inside the free limits.
+
+1. Cloudflare dashboard → **Workers & Pages → Create → Import a repository** → pick `Veritas-life-frontend`.
+   Deploy command: `npx wrangler deploy` (the build runs by itself, see `wrangler.jsonc`).
+2. **Settings → Variables and Secrets**: add `ADMIN_PASSWORD` (secret). Optional: `RESEND_API_KEY` + `EMAIL_FROM`
+   for password-reset emails, `KORAPAY_SECRET_KEY` for real payments, and `IMPORT_URL` + `IMPORT_TOKEN`
+   (your Upstash REST URL and token) to copy existing players over once.
+3. Open `https://veritas-life.<your-subdomain>.workers.dev`.
+4. In the admin website set `VL_API` (config.js) to that address, log in and press **☁ Move data from Upstash** once.
+
+Free-plan limits to know: 100,000 Worker requests and 100,000 Durable Object requests a day (live-connection
+messages count 20 messages as 1 request), reset at 1 AM Lagos time. Gmail SMTP does not work on Cloudflare; use Resend for emails.
+
 # VERITAS LIFE (all on Vercel)
 
 The whole online game runs on one Vercel project. Real players are students; all staff are NPCs.

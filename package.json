@@ -2,13 +2,22 @@
   "name": "veritas-life",
   "version": "1.0.0",
   "private": true,
-  "description": "VERITAS LIFE online on Vercel: the game, the admin website and the game server (Vercel Functions + Upstash Redis).",
+  "description": "VERITAS LIFE: the game and the game server. Runs on Cloudflare Workers (wrangler deploy), on Vercel (Upstash Redis), or on your own server.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
     "dev": "node dev-server.js",
     "vercel-build": "node build.js",
-    "build": "node build.js"
+    "build": "node build.js",
+    "start": "node server.js",
+    "cf:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "ioredis": "^5.4.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
   }
 }
