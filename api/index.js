@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const R = require('../lib/redis');
 const mailer = require('../lib/mail');
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (process.env.VERCEL || process.env.ON_CLOUDFLARE ? '' : 'change-me-now');
+/* read when it is used, so a password added later in Vercel or Cloudflare works without a restart */
+const adminPass = () => process.env.ADMIN_PASSWORD || (process.env.VERCEL || process.env.ON_CLOUDFLARE ? '' : 'change-me-now');
 const PAYMENTS_MODE = process.env.PAYMENTS_MODE || 'test';
 const PACKS = { p1: { ng: 1000, coins: 50000 }, p5: { ng: 5000, coins: 250000 }, p20: { ng: 20000, coins: 1000000 } };
 const MATRIC = /^VUG\/26\/[A-Z0-9]{2,12}(\/[A-Z0-9]{1,8})?$/;
@@ -204,7 +205,7 @@ module.exports = async function handler(req, res) {
       if (await limited('su:' + ip, 60, 3600)) return send(res, 429, { error: 'Too many accounts from this network. Try again later.' });
       const un = normUname(b.username); if (!UNAME.test(un)) return send(res, 400, { error: 'Choose a username: 3 to 20 letters, numbers, dots or underscores (no spaces).' });
       const fullname = String(b.fullname || '').replace(/[^\p{L} .'\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 60);
-      if (fullname.split(' ').filter(Boolean).length < 2) return send(res, 400, { error: 'Enter your full name (first name and surname).' });
+      if (fullname.replace(/[^\p{L}]/gu, '').length < 2) return send(res, 400, { error: 'Enter your name.' });
       const email = normEmail(b.email); if (!EMAIL.test(email)) return send(res, 400, { error: 'Enter a valid email address. You need it to reset your password.' });
       const dept = String(b.dept || '').toUpperCase(); if (!DEPTS.includes(dept)) return send(res, 400, { error: 'Choose your department.' });
       const age = Math.floor(+b.age); if (!(age >= 15 && age <= 70)) return send(res, 400, { error: 'Enter your real age (15 or older).' });
@@ -253,7 +254,7 @@ module.exports = async function handler(req, res) {
 
     if (p.startsWith('admin/')) {
       if (p === 'admin/login' && req.method === 'POST') {
-        if (!ADMIN_PASSWORD) return send(res, 503, { error: 'Set ADMIN_PASSWORD in Vercel → Settings → Environment Variables, then redeploy.' });
+        const ADMIN_PASSWORD = adminPass(); if (!ADMIN_PASSWORD) return send(res, 503, { error: process.env.ON_CLOUDFLARE ? 'The game server has no admin password yet. In Cloudflare: Workers → veritas-life-frontend → Settings → Variables and secrets, add ADMIN_PASSWORD as a Secret.' : 'Set ADMIN_PASSWORD in Vercel → Settings → Environment Variables, then redeploy.' });
         if (await limited('adm:' + ip, 10, 600)) return send(res, 429, { error: 'Too many attempts.' });
         const a = Buffer.from(String(b.password || '')), e = Buffer.from(ADMIN_PASSWORD); if (a.length !== e.length || !crypto.timingSafeEqual(a, e)) return send(res, 401, { error: 'Wrong admin password.' });
         const t = token(); await R.cmd('SET', 'adm:' + t, 1, 'EX', 12 * 3600); return send(res, 200, { token: t });
@@ -323,7 +324,7 @@ module.exports = async function handler(req, res) {
     if (p === 'me') return send(res, 200, { user: Object.assign(own(u), { datingName: u.dating ? (await names([u.dating]))[u.dating] : null }), state: J(await R.cmd('GET', 'state:' + me)), mail: mailer.ready });
     if (p === 'account' && req.method === 'POST') {
       const set = [];
-      if (b.fullname != null) { const f = String(b.fullname).replace(/[^\p{L} .'\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 60); if (f.split(' ').filter(Boolean).length < 2) return send(res, 400, { error: 'Enter your full name.' }); set.push('fullname', f); }
+      if (b.fullname != null) { const f = String(b.fullname).replace(/[^\p{L} .'\-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 60); if (f.replace(/[^\p{L}]/gu, '').length < 2) return send(res, 400, { error: 'Enter your name.' }); set.push('fullname', f); }
       if (b.email != null) { const e = normEmail(b.email); if (!EMAIL.test(e)) return send(res, 400, { error: 'Enter a valid email address.' }); const taken = await R.cmd('GET', 'email:' + e); if (taken && +taken !== me) return send(res, 409, { error: 'That email is used by another account.' });
         if (u.email && u.email !== e) await R.cmd('DEL', 'email:' + u.email); await R.cmd('SET', 'email:' + e, me); set.push('email', e); }
       if (b.username != null && !u.username) { const un = normUname(b.username); if (!UNAME.test(un)) return send(res, 400, { error: 'Username: 3 to 20 letters, numbers, dots or underscores.' }); if (!(await R.cmd('SET', 'uname:' + un, me, 'NX'))) return send(res, 409, { error: 'That username is taken.' }); set.push('username', un); }
