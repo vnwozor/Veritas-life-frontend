@@ -40,7 +40,7 @@
         <div class="vlg-tabs"><button type="button" data-m="in" class="on">Log in</button><button type="button" data-m="up">Create account</button></div>
         <form autocomplete="on" novalidate>
           <div class="vlg-f" data-for="in"><label>Matric number, username or email</label><input name="ident" placeholder="VUG/26/1001, @username or email" autocomplete="username" autocapitalize="off" spellcheck="false" maxlength="120"></div>
-          <div class="vlg-f" data-for="up"><label>Full name</label><input name="fullname" placeholder="First name and surname" autocomplete="name" maxlength="60"></div>
+          <div class="vlg-f" data-for="up"><label>Name</label><input name="fullname" placeholder="Your name" autocomplete="given-name" maxlength="40"></div>
           <div class="vlg-f" data-for="up"><label>Email</label><input name="email" type="email" placeholder="you@email.com" autocomplete="email" autocapitalize="off" maxlength="120"></div>
           <div class="vlg-f" data-for="up"><label>Username</label><div class="vlg-matric"><span>@</span><input name="username" placeholder="e.g. victor_n" maxlength="20" autocomplete="off" autocapitalize="off" spellcheck="false"></div><p class="vlg-help" style="margin:4px 0 0">Your matric number is given to you automatically when you create the account.</p></div>
           <div class="vlg-f vlg-row" data-for="up"><div><label>Department</label><select name="dept">${deptOpts}</select></div><div class="vlg-age"><label>Age</label><input name="age" type="number" inputmode="numeric" min="15" max="70" placeholder="18"></div></div>
@@ -80,7 +80,7 @@
         path = '/api/login'; body = { id, password: f.password.value };
       } else if (mode === 'up') {
         const username = val('username').toLowerCase().replace(/^@/, '');
-        if (val('fullname').split(/\s+/).filter(Boolean).length < 2) { err.textContent = 'Enter your full name (first name and surname).'; return; }
+        if (val('fullname').replace(/[^\p{L}]/gu, '').length < 2) { err.textContent = 'Enter your name.'; return; }
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(val('email'))) { err.textContent = 'Enter a valid email. You need it if you forget your password.'; return; }
         if (!/^[a-z0-9_.]{3,20}$/.test(username)) { err.textContent = 'Username: 3 to 20 letters, numbers, dots or underscores (no spaces).'; return; }
         if (!f.dept.value) { err.textContent = 'Choose your department.'; return; }
@@ -305,12 +305,12 @@
     if (u.username) wrap.append(el2('div', 'txrow', '<div>Username</div><div class="amt">@' + escH(u.username) + '</div>'));
     else { const ub = h('div', 'acctbox'); ub.innerHTML = '<div class="note">Pick a username so friends can find you and send you money.</div><input class="gname" name="un" placeholder="username (letters, numbers, _ .)" maxlength="20" autocapitalize="off"><div class="btnrow"><button class="unsave">Save username</button></div><div class="note unmsg"></div>';
       ub.querySelector('.unsave').onclick = async () => { const m = ub.querySelector('.unmsg'); try { const j = await api('/api/account', { username: ub.querySelector('[name=un]').value.trim().replace(/^@/, '') }); N.user = Object.assign(N.user, j.user); m.textContent = 'Saved: @' + N.user.username; } catch (e) { m.textContent = e.message; } }; wrap.append(ub); }
-    if (u.fullname) wrap.append(el2('div', 'txrow', '<div>Full name</div><div class="amt">' + escH(u.fullname) + '</div>'));
+    if (u.fullname) wrap.append(el2('div', 'txrow', '<div>Name</div><div class="amt">' + escH(u.fullname) + '</div>'));
     if (u.dept) wrap.append(el2('div', 'txrow', '<div>Department</div><div class="amt">' + escH((DEPTS.find(d => d[0] === u.dept) || [0, u.dept])[1]) + '</div>'));
     wrap.append(el2('div', 'txrow', '<div>Email</div><div class="amt">' + (u.email ? escH(u.email) : '<span class="neg">Not set</span>') + '</div>'));
     const box = h('div', 'acctbox'); const need = !u.email || !u.fullname || !u.dept || !u.age;
     box.innerHTML = '<div class="note">' + (need ? 'Add your details so you can log in with your email and reset your password if you forget it.' : 'Change the email you use to log in and reset your password.') + '</div>' +
-      (!u.fullname ? '<input class="gname" name="fullname" placeholder="Full name (first name and surname)" maxlength="60">' : '') +
+      (!u.fullname ? '<input class="gname" name="fullname" placeholder="Your name" maxlength="40">' : '') +
       '<input class="gname" name="email" type="email" placeholder="Email" maxlength="120" value="' + escH(u.email || '') + '">' +
       (!u.dept ? '<select class="gname" name="dept"><option value="">Department</option>' + DEPTS.map(([c, n]) => '<option value="' + c + '">' + escH(n) + '</option>').join('') + '</select>' : '') +
       (!u.age ? '<input class="gname" name="age" type="number" min="15" max="70" placeholder="Age">' : '') +
