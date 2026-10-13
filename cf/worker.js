@@ -72,6 +72,7 @@ export class Game extends DurableObject {
 
   /* ---------- requests ---------- */
   async fetch(request) {
+    for (const [k, v] of Object.entries(this.env || {})) if (typeof v === 'string') process.env[k] = v;
     const url = new URL(request.url);
     if (url.pathname === '/ws') return this.live(request, url);
     if (url.pathname === '/api/admin/import' && request.method === 'POST') return this.importUpstash(request);
