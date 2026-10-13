@@ -114,6 +114,7 @@
     connect();
     whenVL(() => {
       const c = $('#btnCont'); if (c) c.hidden = true; document.querySelectorAll('.spl .ghost').forEach(x => x.remove());
+      { const bk = backupGet(user); if (bk && !bk.over && (!state || (!state.over && (bk.savedAt || 0) > (state.savedAt || 0)))) { state = bk; setTimeout(() => { try { saveNow(state); } catch (e) { } }, 4000); } }
       if (state && !state.over) { VL.boot(VL.migrate(state)); }
       else { const n = $('#inName'); const first = String(user.fullname || '').split(' ')[0]; if (n) { if (first) n.value = first.slice(0, 14); else n.placeholder = 'Your name'; }
         const d = $('#inDept'); if (d && user.dept) { d.value = user.dept; d.disabled = true; d.title = 'From your account'; } }
@@ -180,12 +181,12 @@
       case 'fx': { N.fxSeen = N.fxSeen || new Set(); const fresh = m.list.filter(e => !N.fxSeen.has(e.id)); fresh.forEach(e => N.fxSeen.add(e.id)); N.fxq.push(...fresh); flushFx(); break; }
       case 'groups_dirty': wsSend({ t: 'groups' }); break;
       case 'pres': onPres(m.list); break;
-      case 'online': N.online = m.list; rerender(['players', 'pprof', 'onew']); break;
-      case 'threads': N.threads = m.list; rerender(['players']); break;
+      case 'online': N.online = m.list; rerender(['players', 'pprof', 'onew', 'msgs']); break;
+      case 'threads': N.threads = m.list; rerender(['players', 'msgs']); break;
       case 'dm': { const other = m.m.from === N.user.id ? m.m.to : m.m.from; (N.dms[other] = N.dms[other] || []).push(m.m);
         const viewing = VL && VL.UI.phone && VL.phoneView === 'pchat' && VL.phoneArg === other;
         if (m.m.from !== N.user.id && !viewing && VL && S()) VL.toast(escH(m.m.name), escH(m.m.text.length > 80 ? m.m.text.slice(0, 78) + '…' : m.m.text));
-        wsSend({ t: 'threads' }); rerender(['pchat', 'players']); break; }
+        wsSend({ t: 'threads' }); rerender(['pchat', 'players', 'msgs']); break; }
       case 'dm_hist': N.dms[m.with] = m.list; N.names[m.with] = m.name; rerender(['pchat']); break;
       case 'groups': N.groups = m.list; rerender(['groups', 'ogroup']); break;
       case 'grp_req': if (VL && S()) VL.toast('Group request', escH(m.from) + ' wants to add you to "' + escH(m.name) + '". Open Phone → Groups.'); wsSend({ t: 'groups' }); break;
@@ -236,10 +237,14 @@
   N.onBoot = st => { st.mature = !!N.user.adult; st.matric = N.user.matric; st.uid = N.user.id; st.age = N.user.age || st.age || 0; if (st.love) st.love.player = N.user.dating ? { id: N.user.dating, name: N.user.datingName || 'your partner' } : null; N.booted = true; bootMsg(); setTimeout(() => { VL.save(); flushFx(); }, 600);
     if (!N.user.email) setTimeout(() => { if (S()) VL.toast('Add your email', 'Open Profile → Account and add your email, so you can log in with it and reset your password.'); }, 9000); };
   let saveT = null, lastState = null;
-  N.save = st => { lastState = st; if (saveT) return; saveT = setTimeout(() => { saveT = null; if (!wsSend({ t: 'state', st: lastState })) saveNow(lastState); }, 2500); };
-  async function saveNow(st) { try { await fetch(BASE + '/api/state', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + N.token }, body: JSON.stringify({ state: st }) }); } catch (e) { } }
+  N.save = st => { try { st.savedAt = Date.now(); } catch (e) { } if (Date.now() - (N.bkAt || 0) > 5000) { N.bkAt = Date.now(); backupPut(st); } lastState = st; if (saveT) return; saveT = setTimeout(() => { saveT = null; if (!wsSend({ t: 'state', st: lastState })) saveNow(lastState); }, 2500); };
+  /* a copy of your save on this phone too, so a server hiccup never sends you back to character creation */
+  function bkKey(u) { return 'vl-backup-' + ((u && (u.id || u.matric)) || 'x'); }
+  function backupPut(st) { try { if (N.user && st && !st.over) localStorage.setItem(bkKey(N.user), JSON.stringify(st)); } catch (e) { } }
+  function backupGet(u) { try { const v = localStorage.getItem(bkKey(u)); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+  async function saveNow(st) { try { if (st) { st.savedAt = st.savedAt || Date.now(); backupPut(st); } } catch (e) { } try { await fetch(BASE + '/api/state', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + N.token }, body: JSON.stringify({ state: st }) }); } catch (e) { } }
   N.saveNow = saveNow;
-  N.restart = async st => { stopWS = true; await saveNow(st); location.reload(); };
+  N.restart = async st => { try { localStorage.removeItem(bkKey(N.user)); } catch (e) { } stopWS = true; await saveNow(st); location.reload(); };
   window.addEventListener('pagehide', () => { if (S() && !S().over && N.booted) saveNow(VL.snapState()); });
   N.log = (type, data) => wsSend({ t: 'log', type, data });
   N.beat = (to, why) => wsSend({ t: 'beat', to, why });
