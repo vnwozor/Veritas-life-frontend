@@ -24,10 +24,10 @@ export default {
 
 /* keys that only matter while people are online: never written to storage */
 const EPHEMERAL = /^(pos:|zl:|rl:)|^z:online$/;
-/* a player's full save is written to storage at most every 3 minutes (always kept current in memory,
+/* a player's full save is written to storage at most every 45 seconds (always kept current in memory,
    and written at once when they close the game or go offline) */
 const SLOW = /^state:/;
-const SLOW_MS = 180000;
+const SLOW_MS = 45000;
 
 export class Game extends DurableObject {
   constructor(ctx, env) {
