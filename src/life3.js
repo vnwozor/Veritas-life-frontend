@@ -8,8 +8,13 @@
    - A MY ROOM sign above your door in the hostel corridor.
    - Sound starts on iPhone too; two-finger twist and drag move the camera; Messages lists real players. */
 
-/* ---------- one clock for everybody ---------- */
-const CLK={off:0,ok:false,MS:2000};/* 2000 ms per game minute: 1 game hour = 2 real minutes */
+/* ---------- TIME: the one place every duration is set ----------
+   msPerGameMinute: 3000 ms → 1 game hour = 3 real minutes, 1 game day = 72 real minutes.
+   ACTION_MIN: how many GAME minutes each kind of action takes (×3 = real seconds). */
+const TIME={msPerGameMinute:3000,
+  ACTION_MIN:{sleep:30,nap:10,lecture:30,exam:60,eat:10,bath:12,shower:8,toilet:3,study:30,cook:15,social:15,party:60,work:60,shop:5,gym:30,pray:20,other:30},
+  maxActionMin:60};
+const CLK={off:0,ok:false,get MS(){return TIME.msPerGameMinute;}};
 (async()=>{try{const t0=Date.now();const r=await fetch('/online.js?clock='+t0,{method:'HEAD',cache:'no-store'});const d=r.headers.get('Date');const t1=Date.now();if(d){const srv=Date.parse(d)+500;if(isFinite(srv))CLK.off=srv-(t0+t1)/2;}}catch(e){}CLK.ok=true;})();
 function uNow(){return (Date.now()+CLK.off)/CLK.MS;}
 function clockReady(){return S&&!S.over&&!S.intro&&!S.captive&&CLK.ok;}
