@@ -115,6 +115,11 @@
     whenVL(() => {
       const c = $('#btnCont'); if (c) c.hidden = true; document.querySelectorAll('.spl .ghost').forEach(x => x.remove());
       { const bk = backupGet(user); if (bk && !bk.over && (!state || (!state.over && (bk.savedAt || 0) > (state.savedAt || 0)))) { state = bk; setTimeout(() => { try { saveNow(state); } catch (e) { } }, 4000); } }
+      /* the server remembers you finished the arrival: rebuild your character instead of showing the create form again */
+      if (!state && user.onboarded && user.char && user.char.name) {
+        try { const c = user.char; const st = VL.newState({ name: c.name, dept: c.dept || user.dept || 'CSC', trait: c.trait || 'social', look: c.look || {}, bg: c.bg || 'ajekpako', room: c.room || '104' });
+          st.intro = false; st.flags = st.flags || {}; st.flags.arrived = 1; st.restored = Date.now(); const D = VL.LOCS.boys.door; st.pos = { x: D.x, z: D.z + 2 }; st.at = null; state = st;
+          toastLater('Welcome back', 'Your character was restored from the server. Your money and items start fresh from your last server record.'); } catch (e) { console.error('restore', e); } }
       if (state && !state.over) { VL.boot(VL.migrate(state)); }
       else { const n = $('#inName'); const first = String(user.fullname || '').split(' ')[0]; if (n) { if (first) n.value = first.slice(0, 14); else n.placeholder = 'Your name'; }
         const d = $('#inDept'); if (d && user.dept) { d.value = user.dept; d.disabled = true; d.title = 'From your account'; } }
@@ -153,7 +158,7 @@
     const out = N.out.splice(0, 40); nSync++;
     const pv = VL && VL.UI.phone ? VL.phoneView : null;
     const wantOnline = pv === 'players' || pv === 'onew' || pv === 'pprof' || nSync % 10 === 1;
-    const payload = { out, pos: N.booted ? N.pos : null, online: wantOnline };
+    const payload = { out, pos: N.booted ? N.pos : null, online: wantOnline, dv: N.dv || null };
     try {
       let code = 0, j = {};
       const m = live ? await viaLive(payload) : null;
@@ -203,9 +208,18 @@
       case 'steal_res': onSteal(m); break;
       case 'banned': stopWS = true; try { localStorage.removeItem(TK); } catch (e) { } showGate('This account has been banned by the game admin.'); break;
       case 'kicked': stopWS = true; showGate('You logged in on another device or tab. Log in again to play here.'); break;
+      case 'xfer_res': onXfer(m); break;
+      case 'xfer_hist': N.xhist = m.list; rerender(['pmoney', 'xhist']); break;
+      default: (N.handlers || []).forEach(f => { try { f(m); } catch (e) { console.error(e); } });
     }
   }
   N.names = {};
+  /* a transfer answer from the server: money leaves your wallet exactly once per reference */
+  function onXfer(m) { const s = S(); N.pend = N.pend || {}; const p = N.pend[m.ref]; delete N.pend[m.ref];
+    if (m.ok) { if (s) { s.txApplied = s.txApplied || {}; if (!s.txApplied[m.ref]) { s.txApplied[m.ref] = Date.now(); const keys = Object.keys(s.txApplied); if (keys.length > 200) keys.sort((a, b) => s.txApplied[a] - s.txApplied[b]).slice(0, keys.length - 200).forEach(k => delete s.txApplied[k]);
+          VL.spend(m.amount + (m.fee || 0), 'Transfer to ' + (m.name || 'player') + ' · ref ' + m.ref.slice(-8).toUpperCase()); VL.toast('Money sent', naira(m.amount) + ' to ' + escH(m.name || 'the player') + '. Ref ' + escH(m.ref.slice(-8).toUpperCase()) + '.'); try { navigator.vibrate && navigator.vibrate(30); } catch (e) { } VL.save(); } } }
+    else if (VL && S()) VL.toast('Transfer failed', escH(m.reason || 'Try again.'), 'bad');
+    N.xhist = null; rerender(['pmoney', 'xhist']); }
 
   /* ---------- effects from the server ---------- */
   function flushFx() {
@@ -237,7 +251,8 @@
   N.onBoot = st => { st.mature = !!N.user.adult; st.matric = N.user.matric; st.uid = N.user.id; st.age = N.user.age || st.age || 0; if (st.love) st.love.player = N.user.dating ? { id: N.user.dating, name: N.user.datingName || 'your partner' } : null; N.booted = true; bootMsg(); setTimeout(() => { VL.save(); flushFx(); }, 600);
     if (!N.user.email) setTimeout(() => { if (S()) VL.toast('Add your email', 'Open Profile → Account and add your email, so you can log in with it and reset your password.'); }, 9000); };
   let saveT = null, lastState = null;
-  N.save = st => { try { st.savedAt = Date.now(); } catch (e) { } if (Date.now() - (N.bkAt || 0) > 5000) { N.bkAt = Date.now(); backupPut(st); } lastState = st; if (saveT) return; saveT = setTimeout(() => { saveT = null; if (!wsSend({ t: 'state', st: lastState })) saveNow(lastState); }, 2500); };
+  N.save = st => { try { st.savedAt = Date.now(); } catch (e) { } if (Date.now() - (N.bkAt || 0) > 5000) { N.bkAt = Date.now(); backupPut(st); } lastState = st; if (saveT) return; /* the server gets your save at most every 20 seconds (payments and closing the game send it at once) */
+    saveT = setTimeout(() => { saveT = null; N.lastStateAt = Date.now(); if (!wsSend({ t: 'state', st: lastState })) saveNow(lastState); }, Math.max(2500, 20000 - (Date.now() - (N.lastStateAt || 0)))); };
   /* a copy of your save on this phone too, so a server hiccup never sends you back to character creation */
   function bkKey(u) { return 'vl-backup-' + ((u && (u.id || u.matric)) || 'x'); }
   function backupPut(st) { try { if (N.user && st && !st.over) localStorage.setItem(bkKey(N.user), JSON.stringify(st)); } catch (e) { } }
@@ -258,7 +273,8 @@
 
   /* ---------- presence: other players in the same place ---------- */
   let posT = 0;
-  function myLoc() { const s = S(); if (!s) return 'none'; if (s.captive) return 'camp'; if (s.inside) return s.inside === 'boys' ? 'room:' + (s.roomHost || N.user.id) : 'in:' + s.inside; return 'out'; }
+  N.myLoc = () => myLoc();
+  function myLoc() { const s = S(); if (!s) return 'none'; if (s.captive) return 'camp'; if (s.inside === 'boys') return 'room:' + (s.roomHost || (s.roomNo ? 'r' + (s.look && s.look.female ? 'g' : 'b') + s.roomNo : N.user.id)); if (s.inside) return 'in:' + s.inside; return 'out'; }
   N.frame = (dt, now) => {
     const s = S(); if (!s || !N.booted) return;
     if (!s.inside && s.roomHost) s.roomHost = null;
@@ -370,14 +386,25 @@
       return true; }
     if (v === 'pmoney') { const p = N.payTo || pinfo(+VL.phoneArg); T.textContent = 'Send money'; const s = S();
       b.append(el('div', 'prof', '<div class="av">' + VL.avatar('me') + '</div><b>' + escH(p.name) + '</b><span class="vl-ids">' + (p.username ? '@' + escH(p.username) + ' · ' : '') + escH(p.matric || '') + '</span>' + (p.st === 'kidnapped' || p.status === 'kidnapped' ? '<span style="color:var(--bad)">Held by bandits: this goes to the ransom</span>' : '')));
-      b.append(el('div', 'note', 'Your wallet: <b>' + naira(s.money) + '</b>'));
-      const box = h('div', 'acctbox'); box.innerHTML = '<input class="gname" name="amt" inputmode="numeric" placeholder="Amount, e.g. 5000" maxlength="16"><div class="chips vl-amts"></div><div class="btnrow"><button class="psend">Send</button></div><div class="note pmsg"></div>';
+      b.append(el('div', 'note', 'Your wallet: <b>' + naira(s.money) + '</b> · no transfer fees'));
+      const pend = Object.values(N.pend || {}).filter(x => x.to === p.id); if (pend.length) b.append(el('div', 'note', '⏳ Sending ' + naira(pend[0].amount) + '… it goes through as soon as the server answers.'));
+      const box = h('div', 'acctbox'); box.innerHTML = '<input class="gname" name="amt" inputmode="numeric" placeholder="Amount, e.g. 5000" maxlength="16"><div class="chips vl-amts"></div><div class="btnrow"><button class="psend">Continue</button></div><div class="note pmsg"></div>';
       const ai = box.querySelector('[name=amt]'); ai.value = N.payAmt || ''; ai.oninput = () => { ai.value = ai.value.replace(/[^0-9]/g, ''); N.payAmt = ai.value; };
       [1000, 5000, 20000, 100000, 1000000].forEach(a => { const c = h('button', null, naira(a)); c.onclick = () => { ai.value = String(a); N.payAmt = ai.value; }; box.querySelector('.vl-amts').append(c); });
       box.querySelector('.psend').onclick = () => { const a = Math.floor(+ai.value || 0); const m = box.querySelector('.pmsg'); if (a <= 0) { m.textContent = 'Type an amount.'; return; }
-        if (!VL.spend(a, 'Sent to ' + p.name)) { m.textContent = 'You don\'t have ' + naira(a) + '.'; return; }
-        wsSend({ t: 'send', to: p.id, amount: a }); N.payAmt = ''; VL.toast('Money sent', naira(a) + ' to ' + escH(p.name) + '.'); try { navigator.vibrate && navigator.vibrate(30); } catch (e) { } VL.setPhone('pprof', p.id); };
-      b.append(box); return true; }
+        if (a > s.money) { m.textContent = 'You don\'t have ' + naira(a) + '. Your wallet has ' + naira(s.money) + '.'; return; }
+        if (pend.length) { m.textContent = 'Wait for your last transfer to this player to finish.'; return; }
+        VL.dialog({ who: 'me', kicker: 'Confirm transfer', text: 'Send <b>' + naira(a) + '</b> to <b>' + escH(p.name) + '</b>' + (p.username ? ' (@' + escH(p.username) + ')' : '') + (p.matric ? ' · ' + escH(p.matric) : '') + '?<br><br>Fee: ₦0 · Your wallet after: <b>' + naira(s.money - a) + '</b><br><small>Transfers can\'t be reversed. Game money only.</small>', choices: [
+          { t: 'Send ' + naira(a), fn: () => { const ref = 'tx' + N.user.id + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); N.pend = N.pend || {}; N.pend[ref] = { ref, to: p.id, name: p.name, amount: a, at: Date.now() };
+            wsSend({ t: 'state', st: VL.snapState() }); wsSend({ t: 'xfer', to: p.id, amount: a, ref, bal: S().money }); N.payAmt = ''; setTimeout(() => { if (VL.UI.phone && VL.phoneView === 'pmoney') VL.renderPhone(); }, 50); return 'Sending… reference ' + ref.slice(-8).toUpperCase() + '.'; } },
+          { t: 'Cancel', fn: () => null }] }); };
+      b.append(box);
+      b.append(prow(pb('Transfer history', () => { wsSend({ t: 'xfer_hist' }); VL.setPhone('xhist'); })));
+      return true; }
+    if (v === 'xhist') { T.textContent = 'Transfers'; const L = N.xhist; if (!L) { b.append(el('div', 'note', 'Loading…')); wsSend({ t: 'xfer_hist' }); return true; }
+      if (!L.length) b.append(el('div', 'note', 'No transfers yet.'));
+      L.forEach(x => b.append(el('div', 'txrow', '<div>' + (x.dir === 'in' ? 'From ' : 'To ') + escH(x.name || 'Payment') + '<span>' + new Date(x.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' · ref ' + escH(String(x.ref || '').slice(-8).toUpperCase()) + '</span></div><div class="amt ' + (x.dir === 'in' ? 'pos' : 'neg') + '">' + (x.dir === 'in' ? '+' : '−') + naira(x.amount) + '</div>')));
+      return true; }
     if (v === 'pchat') { const id = +VL.phoneArg; const p = pinfo(id); T.textContent = p.name; N.asked = N.asked || new Set(); if (!N.asked.has(id)) { N.asked.add(id); wsSend({ t: 'dm_hist', with: id }); }
       const list = N.dms[id] || []; if (!list.length) b.append(el('div', 'note', 'Say hi to ' + escH(p.name) + '. This is a real player.'));
       list.forEach(m => b.append(el('div', 'msg' + (m.from === N.user.id ? ' me' : ''), '<span>' + escH(m.text) + '</span><small>' + new Date(m.created).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '</small>')));
