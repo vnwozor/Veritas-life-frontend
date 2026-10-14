@@ -33,9 +33,9 @@ const pair = (a, b) => 'dm:' + Math.min(a, b) + ':' + Math.max(a, b);
 
 /* ---------- helpers on top of Redis ---------- */
 async function user(id) { const u = R.hash(await R.cmd('HGETALL', 'user:' + id)); return u.matric ? normUser(id, u) : null; }
-function normUser(id, u) { return { id: +id, matric: u.matric, pass: u.pass, adult: u.adult === '1', fullname: u.fullname || '', email: u.email || '', dept: u.dept || '', age: +u.age || 0, dating: +u.dating || 0, username: u.username || '', name: u.name || '', female: u.female === '1', created: +u.created || 0, last_seen: +u.last_seen || 0, banned: u.banned === '1', money: +u.money || 0, level: +u.level || 100, day: +u.day || 1, discipline: +u.discipline || 0, cgpa: +u.cgpa || 0, status: u.status || 'new', restarts: +u.restarts || 0, place: u.place || '' }; }
+function normUser(id, u) { return { id: +id, matric: u.matric, pass: u.pass, adult: u.adult === '1', fullname: u.fullname || '', email: u.email || '', dept: u.dept || '', age: +u.age || 0, dating: +u.dating || 0, username: u.username || '', name: u.name || '', female: u.female === '1', created: +u.created || 0, last_seen: +u.last_seen || 0, banned: u.banned === '1', money: +u.money || 0, level: +u.level || 100, day: +u.day || 1, discipline: +u.discipline || 0, cgpa: +u.cgpa || 0, status: u.status || 'new', restarts: +u.restarts || 0, place: u.place || '', onboarded: +u.onboarded || 0, char: u.char || '', room: u.room || '' }; }
 const pub = u => ({ id: u.id, matric: u.matric, username: u.username || '', name: u.name || 'New student', adult: u.adult, female: u.female, level: u.level, banned: u.banned, dept: u.dept, dating: u.dating || 0 });
-const own = u => Object.assign(pub(u), { fullname: u.fullname, email: u.email, age: u.age });
+const own = u => Object.assign(pub(u), { fullname: u.fullname, email: u.email, age: u.age, onboarded: +u.onboarded || 0, char: J(u.char) || null, room: J(u.room) || null });
 async function users(ids) { if (!ids.length) return []; const rows = await R.pipe(ids.map(id => ['HGETALL', 'user:' + id])); return rows.map((r, i) => { const u = R.hash(r); return u.matric ? normUser(ids[i], u) : null; }).filter(Boolean); }
 async function names(ids) { ids = [...new Set(ids.map(Number))].filter(Boolean); if (!ids.length) return {}; const r = await R.pipe(ids.flatMap(id => [['HGET', 'user:' + id, 'name'], ['HGET', 'user:' + id, 'matric']])); const o = {}; ids.forEach((id, i) => { o[id] = r[i * 2] || r[i * 2 + 1] || 'Student'; }); return o; }
 async function authId(req) { const h = req.headers.authorization || ''; const t = h.startsWith('Bearer ') ? h.slice(7) : null; if (!t) return null; const id = await R.cmd('GET', 'sess:' + t); return id ? +id : null; }
@@ -50,10 +50,14 @@ async function logEvent(type, uid, data) {
 }
 async function addEffect(uid, type, data) { const id = await R.cmd('INCR', 'seq:fx'); await R.cmd('HSET', 'fxh:' + uid, id, JSON.stringify({ id, type, data: data || {} })); poke(uid); }
 async function inbox(uid, msg) { await R.pipe([['RPUSH', 'inbox:' + uid, JSON.stringify(msg)], ['EXPIRE', 'inbox:' + uid, 86400]]); poke(uid); }
+/* the shared world: wallet, items on the ground, rooms, houses, tickets (lib/world.js) */
+const WORLD = require('../lib/world');
+WORLD.init({ R, J, now, clean, names: (...a) => names(...a), addEffect: (...a) => addEffect(...a), inbox: (...a) => inbox(...a), limited: (...a) => limited(...a), logEvent: (...a) => logEvent(...a) });
 async function onlineIds() { return (await R.cmd('ZRANGEBYSCORE', 'z:online', now() - ONLINE_MS, '+inf')).map(Number); }
 const STAT_AT = new Map();
 async function storeState(uid, st) {
   if (!st || typeof st !== 'object') return;
+  try { await WORLD.onState(uid, st); } catch (e) { console.error('onState', e); }
   const status = st.captive ? 'kidnapped' : st.over ? 'ended' : st.graduated ? 'graduated' : 'ok';
   /* the full save is kept current; the summary the admin page reads is refreshed at most every 2 minutes */
   const t0 = now(); if (STAT_AT.get(uid) > t0 - 120000 && !st.over && !st.captive) { await R.cmd('SET', 'state:' + uid, JSON.stringify(st)); return; } STAT_AT.set(uid, t0);
@@ -83,6 +87,7 @@ function send(res, code, obj) { res.statusCode = code; res.setHeader('Content-Ty
 
 /* ---------- realtime messages (same shapes as the WebSocket version) ---------- */
 async function handle(me, m, out, ctx) {
+  if (await WORLD.handle(me, m, out)) return;
   switch (m.t) {
     case 'boot': { const p = J(await R.cmd('GET', 'party:last')); if (p) await addEffect(me, 'party', p); const cc = J(await R.cmd('GET', 'concert:cur')); if (cc) out.push({ t: 'concert', c: cc }); await logEvent('online', me, {}); break; }
     case 'ack': if (Array.isArray(m.ids) && m.ids.length) await R.cmd('HDEL', 'fxh:' + me, ...m.ids.slice(0, 200).map(Number)); break;
@@ -179,6 +184,7 @@ async function doSync(me, b) {
   if (onIds) { const ids = onIds.filter(i => i !== me).slice(0, 200); const ps = ids.length ? (await R.cmd('MGET', ...ids.map(i => 'pos:' + i))).map(J) : [];
     online = ids.map((id, i) => ps[i] && { id, name: ps[i].name, lvl: ps[i].lvl, loc: ps[i].loc, st: ps[i].st, female: !!ps[i].female }).filter(Boolean);
     if (pos) online.unshift({ id: me, name: clean(pos.name), lvl: +pos.lvl || 100, loc: myLoc, st: pos.st, female: !!pos.female }); }
+  try { await WORLD.sync(me, b, myLoc, out); } catch (e) { console.error('world sync', e); }
   const msgs = [...inb, ...out]; if (fx.length) msgs.push({ t: 'fx', list: fx }); msgs.push({ t: 'pres', list: pres }); if (online) msgs.push({ t: 'online', list: online });
   if (inb.some(x => x.t === 'banned')) return { code: 403, body: { error: 'banned', in: msgs } };
   return { code: 200, body: { in: msgs, others: near.length } };
@@ -302,7 +308,7 @@ module.exports = async function handler(req, res) {
         if (b.cancel) { await R.cmd('DEL', 'concert:cur'); const ids = await onlineIds(); for (const id of ids) await addEffect(id, 'concert', { cancel: true }); await logEvent('concert_cancel', null, {}); return send(res, 200, { ok: true }); }
         const lineup = (Array.isArray(b.lineup) ? b.lineup : String(b.lineup || '').split(',')).map(x => clean(x, 30)).filter(Boolean).slice(0, 6);
         if (!lineup.length) return send(res, 400, { error: 'Add at least one artist to the lineup.' });
-        const c = { id: now(), title: clean(b.title, 40) || 'Afrobeats Night Live', lineup, inDays: Math.max(0, Math.min(14, Math.floor(+b.inDays || 0))), hour: Math.max(12, Math.min(23, Math.floor(+b.hour || 20))), price: Math.max(0, Math.min(1e9, Math.round(+b.price || 5000))), vip: Math.max(0, Math.min(1e10, Math.round(+b.vip || 25000))) };
+        const c = { id: now(), title: clean(b.title, 40) || 'Afrobeats Night Live', lineup, inDays: Math.max(0, Math.min(14, Math.floor(+b.inDays || 0))), hour: Math.max(12, Math.min(23, Math.floor(+b.hour || 20))), price: Math.max(0, Math.min(1e9, Math.round(+b.price || 5000))), vip: Math.max(0, Math.min(1e10, Math.round(+b.vip || 25000))) }; c.uday = WORLD.uDay() + c.inDays;
         await R.cmd('SET', 'concert:cur', JSON.stringify(c), 'EX', 21 * 86400);
         const ids = await onlineIds(); for (const id of ids) await addEffect(id, 'concert', c); await logEvent('concert', null, { title: c.title, lineup: lineup.join(', ') });
         return send(res, 200, { ok: true, to: ids.length, concert: c }); }
@@ -358,5 +364,6 @@ module.exports = async function handler(req, res) {
 };
 /* for the live-connection server (server.js) */
 module.exports.doSync = doSync;
+module.exports.world = WORLD;
 module.exports.sessionUser = async t => { const id = t && await R.cmd('GET', 'sess:' + t); if (!id) return null; const u = await user(id); return u && !u.banned ? +id : null; };
 module.exports.pokers = pokers;
