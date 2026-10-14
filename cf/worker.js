@@ -66,6 +66,8 @@ export class Game extends DurableObject {
     const t = E.TY.get(k) || 's', v = E.M.get(k);
     const enc = t === 's' ? String(v) : t === 'l' ? JSON.stringify(v) : JSON.stringify([...v]);
     this.sql.exec('INSERT OR REPLACE INTO kv (k, t, v, exp) VALUES (?, ?, ?, ?)', k, t, enc, E.EXP.get(k) || null); this.inDb.add(k);
+    /* full saves are big: once safely on disk they leave memory, and are read back only when needed */
+    if (SLOW.test(k)) { E.M.delete(k); E.TY.delete(k); E.EXP.delete(k); this.loaded.delete(k); }
   }
   flushDue() { const now = Date.now(); for (const [k, at] of [...this.due]) if (at <= now) this.write(k); }
   flushAll() { for (const k of [...this.due.keys()]) this.write(k); }
