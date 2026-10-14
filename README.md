@@ -99,3 +99,16 @@ MakeHuman project, makehumancommunity.org). To rebuild it from a MakeHuman check
 Each person's face, body and clothes come from their existing look (skin, top, trousers or skirt, shoes,
 hair style and colour, hijab), so nothing else in the game needs changing. Their skeleton copies the
 classic character's joints every frame, so every pose and cutscene works the same.
+
+## Tests
+
+- `npm test` — server rules on the in-memory engine: transfers (one send per reference, no overdraft, no race),
+  items on the ground (one picker), hostel rooms (capacity), houses (one buyer, rent and owners), concert tickets
+  (capacity), onboarding record. Never touches real data.
+- `npm run test:e2e` — two players in real browsers against the local server (needs Playwright): clock, sleep/nap,
+  keke cancel/boarding/exit, drop and pick up, transfers, rooms, late assignments, houses, tickets, the club,
+  logging back in on a new device.
+- `npm run test:cf` — the Cloudflare server code (Durable Object) on a local SQLite file, restarted between two runs:
+  transfers, history, items, rooms, onboarding survive the restart.
+- `npm run test:load` — staged simulation of 100 → 3,000 players on one Durable Object, measuring server CPU and memory
+  on this machine. It is a simulation, not a real load test (no real phones, network or Cloudflare limits).
