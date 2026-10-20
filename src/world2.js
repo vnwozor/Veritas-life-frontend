@@ -23,6 +23,22 @@ function stairsMesh(I,x,z,rot,up){const g=new THREE.Group();g.position.set(x,0,z
   const n=8;for(let i=0;i<n;i++){const y=up?(i+1)*0.42:(n-i)*0.42;part(G.box,0x9a8e7a,2.2,0.18,0.55,0,y-0.09,-i*0.55+1.9,g,false);part(G.box,0x7d725f,2.2,y,0.55,0,y/2,-i*0.55+1.9,g,false);}
   part(G.box,0x5a4a3a,0.08,1.1,4.6,-1.15,up?2.3:1.9,0.1,g,false);part(G.box,0x5a4a3a,0.08,1.1,4.6,1.15,up?2.3:1.9,0.1,g,false);
   return g;}
+/* stairs go where they block nothing: away from the door, against a wall, and every spot you could walk to
+   before must still be reachable. Returns where to put them and where you stand to use them. */
+function stairsSpot(I){try{const save0=I.nav;I.nav=null;const g=intNav(I);I.nav=save0;const sp=I.spawn||{x:I.doorX||0,z:I.d/2-1.2};const hw=I.w/2,hd=I.d/2;
+  const s0=gIdx(g,sp.x,sp.z);const reach=blk=>{const seen=new Uint8Array(g.N);if(s0<0||blk[s0])return seen;const q=[s0];seen[s0]=1;
+    while(q.length){const k=q.pop(),i=k%g.w,j=(k-i)/g.w;for(const [a,b] of [[1,0],[-1,0],[0,1],[0,-1]]){const ni=i+a,nj=j+b;if(ni<0||nj<0||ni>=g.w||nj>=g.h)continue;const n=nj*g.w+ni;if(!seen[n]&&!blk[n]){seen[n]=1;q.push(n);}}}return seen;};
+  const R0=reach(g.blk);const spots=(I.objs||[]).filter(o=>o.spot&&o.id!=='door').map(o=>gIdx(g,o.spot.x,o.spot.z)).filter(k=>k>=0&&R0[k]);
+  const cands=[];for(const rot of [0,Math.PI,Math.PI/2,-Math.PI/2]){const q=Math.abs(Math.sin(rot))>0.5;const hx=q?2.3:1.3,hz=q?1.3:2.3;
+    for(let x=-hw+hx+0.3;x<=hw-hx-0.3+0.01;x+=0.5)for(let z=-hd+hz+0.3;z<=hd-hz-0.3+0.01;z+=0.5){const ax=x+Math.sin(rot)*3.1,az=z+Math.cos(rot)*3.1;if(Math.abs(ax)>hw-0.9||Math.abs(az)>hd-0.9)continue;
+      if(Math.hypot(x-sp.x,z-sp.z)<5.5||Math.hypot(ax-sp.x,az-sp.z)<2.5)continue;const ak=gIdx(g,ax,az);if(ak<0||!R0[ak])continue;
+      let ok=true;for(let a=-hx;a<=hx+0.01&&ok;a+=0.5)for(let b=-hz;b<=hz+0.01;b+=0.5){const px=x+a,pz=z+b;if(Math.abs(px)>hw-0.65||Math.abs(pz)>hd-0.65)continue;const k=gIdx(g,px,pz);if(k<0||g.blk[k]){ok=false;break;}}
+      if(!ok)continue;const wall=Math.min(hw-Math.abs(x)-hx,hd-Math.abs(z)-hz);cands.push({x,z,rot,ax,az,score:wall*3-Math.hypot(x-sp.x,z-sp.z)*0.15});}}
+  cands.sort((a,b)=>a.score-b.score);
+  for(const c of cands.slice(0,80)){const blk=g.blk.slice();raster(g,{c:0,x:c.x,z:c.z,w:2.5,d:4.6,a:c.rot},0.28,blk);const R1=reach(blk);const ak=gIdx(g,c.ax,c.az);if(!R1[ak])continue;
+    let ok=true;for(let k=0;k<g.N&&ok;k++)if(R0[k]&&!blk[k]&&!R1[k])ok=false;if(!ok)continue;if(spots.some(k=>!R1[k]))continue;
+    return {x:c.x,z:c.z,rot:c.rot,spot:{x:c.ax,z:c.az}};}}catch(e){console.error(e);}return null;}
+function placeStairs(I,up,fallback){const p=stairsSpot(I)||fallback;const st=stairsMesh(I,p.x,p.z,p.rot,up);I.nav=null;I.stairsAt=p.spot;return {st,spot:p.spot};}
 
 /* ================= HOSTEL CORRIDORS ================= */
 vloc('boysHall',{of:'boys',name:LOCS.boys.name,iname:'Ground floor corridor',inside:'hall',floor:1,leaveTxt:'Leave the hostel'});
@@ -88,8 +104,8 @@ BUILD.nroom=function(I,id){shell(I,11,9,4.4,floorTex('#c9bda6','#b7a98e','tile')
 
 /* ================= FAMILY HOUSE: upstairs bedrooms ================= */
 vloc('family2',{of:'family',name:LOCS.family.name,iname:'Upstairs · bedrooms',inside:'family2',zone:'off',leaveTxt:'Go downstairs'});
-{const _bf=BUILD.family;BUILD.family=function(I,id){_bf(I,id);const st=stairsMesh(I,6.2,3.2,Math.PI,true);
-  addObj(I,st,{id:'stairs',name:'Stairs up',ly:3.8,spot:{x:4.6,z:3.6},acts:()=>[A('Go upstairs','Your bedroom, your parents\' room, the balcony',()=>goInt('family2',{x:5,z:2.6},Math.PI))]});};}
+{const _bf=BUILD.family;BUILD.family=function(I,id){_bf(I,id);const {st,spot}=placeStairs(I,true,{x:6.2,z:3.2,rot:Math.PI,spot:{x:4.6,z:3.6}});
+  addObj(I,st,{id:'stairs',name:'Stairs up',ly:3.8,spot,acts:()=>[A('Go upstairs','Your bedroom, your parents\' room, the balcony',()=>goInt('family2',getInt('family2').stairsAt,Math.PI))]});};}
 BUILD.family2=function(I,id){shell(I,16,13,4.6,floorTex('#b89a72','#a4865e','wood'),0xf3ead8,5.5,0x7a3b2a);const hw=8,hd=6.5;
   /* your bedroom */
   const bed=new THREE.Group();bed.position.set(-5,0,-3.6);I.g.add(bed);part(G.box,0x6b4a2e,2.6,0.5,4.2,0,0.25,0,bed);part(G.box,0xe8d9a8,2.4,0.3,4,0,0.65,0,bed,false);part(G.box,0x2f8a57,2.45,0.1,2.6,0,0.83,0.6,bed,false);part(G.box,0xf2efe6,1.6,0.25,0.6,0,0.9,-1.6,bed,false);
@@ -103,7 +119,7 @@ BUILD.family2=function(I,id){shell(I,16,13,4.6,floorTex('#b89a72','#a4865e','woo
   addObj(I,bed,{id:'bed',name:'Your bed',ly:2.4,spot:{x:-3.4,z:-2.2},acts:()=>[A('Sleep','8h · your real bed',()=>startAction('Sleeping',480,{sleep:true,where:id,place:bp,done:()=>{addMoodlet('Slept in your own bed',12,600);toast('Morning','Nothing beats your own bed.','good');}})),A('Nap','2h',()=>startAction('Napping',120,{sleep:true,where:id,place:bp}))]});
   addObj(I,desk,{id:'desk',name:'Your desk',ly:2.6,spot:{x:-1.6,z:-3.4},acts:()=>[A('Study at home','1h · quiet',()=>startAction('Studying at home',60,{where:id,place:{x:-1.6,y:0,z:-4.2,r:Math.PI,pose:'read'},per:()=>N('energy',-0.04),done:()=>{try{addStudy(1.1);}catch(e){}}})),A('Play games','1h',()=>startAction('Gaming at home',60,{where:id,place:{x:-1.6,y:0,z:-4.2,r:Math.PI,pose:'game'},per:()=>N('fun',0.7)}))]});
   addObj(I,pbed,{id:'pbed',name:'Mum and Dad\'s room',ly:2.4,spot:{x:4,z:-0.8},acts:()=>[A('Look around','Family photos, Dad\'s old suits',()=>toast('Mum and Dad\'s room','Your baby photo is still on the wall. Embarrassing.'))]});
-  const st=stairsMesh(I,6.2,3.2,Math.PI,false);addObj(I,st,{id:'stairs',name:'Stairs down',ly:3.4,spot:{x:4.6,z:3.6},acts:()=>[A('Go downstairs','Living room and kitchen',()=>goInt('family',{x:4.6,z:3.6},Math.PI))]});
+  const {st,spot}=placeStairs(I,false,{x:6.2,z:3.2,rot:Math.PI,spot:{x:4.6,z:3.6}});addObj(I,st,{id:'stairs',name:'Stairs down',ly:3.4,spot,acts:()=>[A('Go downstairs','Living room and kitchen',()=>goInt('family',getInt('family').stairsAt,Math.PI))]});
   I.populate=()=>{resetInt(I);};};
 
 /* ================= UPSTAIRS IN CAMPUS BUILDINGS ================= */
@@ -111,20 +127,23 @@ function addUpper(baseId,o){const B=LOCS[baseId];const id=baseId+'_up';vloc(id,O
   return id;}
 BUILD.upper=function(I,id){const L=LOCS[id];const kind=L.kind2||'study';shell(I,18,12,4.6,floorTex('#cfc8b8','#bdb5a2','tile'),0xeee8da,6.6,0x4a5a6a);
   poster(I,0,0,3.4,[[fx(LOCS[L.upOf].name).toUpperCase(),'800 24px sans-serif'],['FIRST FLOOR','700 20px sans-serif']],'#1f2d44','#f2efe6',3,0.9);
-  if(kind==='study'){for(let i=0;i<3;i++)for(let j=0;j<2;j++)tableSet(I,-5+i*5,-2.6+j*4.6,0x6b4a2e,0x2b4f8a);}
-  else if(kind==='class'){for(let r=0;r<4;r++)for(let c=0;c<5;c++){const x=-6+c*3,z=-2.6+r*2.2;part(G.box,0x8a6a45,2.2,0.1,0.7,x,1.25,z-0.5,I.g,false);chair(I,x,z,Math.PI,0x7a2331);}onWall(I,0,0,2.6,6,2.2,0x24402f);}
+  /* furniture stays clear of the front of the room so there is always a way through */
+  if(kind==='study'){for(let i=0;i<2;i++)for(let j=0;j<2;j++)tableSet(I,-5.5+i*5,-3.0+j*4.4,0x6b4a2e,0x2b4f8a);}
+  else if(kind==='class'){for(let r=0;r<3;r++)for(let c=0;c<5;c++){const x=-6+c*3,z=-2.6+r*2.2;part(G.box,0x8a6a45,2.2,0.1,0.7,x,1.25,z-0.5,I.g,false);chair(I,x,z,Math.PI,0x7a2331);}onWall(I,0,0,2.6,6,2.2,0x24402f);}
   else{for(let i=0;i<4;i++){table(I,-5+i*3.4,-3.4,2.2,1.2,0x5a3d26);chair(I,-5+i*3.4,-2.2,Math.PI,0x2b2b2b);}locker(I,7.6,-4.6,0,0x6b6b6b);locker(I,6.4,-4.6,0,0x6b6b6b);}
   const room=new THREE.Group();room.position.set(0,0,0.5);I.g.add(room);
   addObj(I,room,{id:'up',name:kind==='study'?'Quiet reading room':kind==='class'?'Upstairs classroom':'Offices',ly:2.6,spot:{x:0,z:3},acts:()=>kind==='office'?[A('Ask at the offices','5m',()=>toast(fx(LOCS[L.upOf].name),pick(['"Come back on Monday."','"Have you paid your fees? Bursary is downstairs."','"Fill this form in triplicate."'])))]:
     [A('Study up here','1h · quieter than downstairs',()=>{const s=freeSeat(I)||I.seats[0];startAction('Studying upstairs',60,{where:id,place:{x:s.x,y:0,z:s.z,r:s.face,pose:'read'},per:()=>N('energy',-0.04),done:()=>{try{addStudy(1.0);}catch(e){}}});})]});
-  const st=stairsMesh(I,7.2,2.8,Math.PI,false);addObj(I,st,{id:'stairs',name:'Stairs down',ly:3.4,spot:{x:5.6,z:3.6},acts:()=>[A('Go downstairs','Back to '+fx(LOCS[L.upOf].name),()=>goInt(L.upOf,L.downSpawn||null))]});
+  const {st,spot}=placeStairs(I,false,{x:7.2,z:2.8,rot:Math.PI,spot:{x:5.6,z:3.6}});addObj(I,st,{id:'stairs',name:'Stairs down',ly:3.4,spot,acts:()=>[A('Go downstairs','Back to '+fx(LOCS[L.upOf].name),()=>goInt(L.upOf,getInt(L.upOf).stairsAt||null))]});
   I.crowd=[];for(let k=0;k<3;k++){const r=interiorSim(I,randomLook(k%2===1),'student');r.g.userData.npc='student';I.pick.push(r.g);I.crowd.push(r);}
   I.populate=()=>{resetInt(I);const h=minOf(S.t)/60;if(h<7||h>=21)return;I.crowd.forEach(r=>seatSim(I,r,freeSeat(I),chance(.7)?'read':'sit'));};};
 /* stairs inside the library, administration and each lecture block */
 [['library','study'],['admin','office'],['lecture','class'],['blockB','class'],['blockC','class'],['blockD','class']].forEach(([b,k])=>addUpper(b,{kind2:k,iname:'First floor',downSpawn:null}));
-{const wrap=(type)=>{const _b=BUILD[type];BUILD[type]=function(I,id){_b.apply(this,arguments);if(!LOCS[id+'_up'])return;const x=I.w/2-1.6,z=I.d/2-3.2;const st=stairsMesh(I,x,z,Math.PI,true);
-    addObj(I,st,{id:'stairsup',name:'Stairs up',ly:3.8,spot:{x:x-1.6,z:z+0.6},acts:()=>[A('Go upstairs',LOCS[id+'_up'].kind2==='office'?'Offices':LOCS[id+'_up'].kind2==='study'?'Quiet reading room':'More classrooms',()=>goInt(id+'_up',{x:5.6,z:3.6},Math.PI))]});
-    LOCS[id+'_up'].downSpawn={x:x-1.6,z:z+0.6};};};
+{const wrap=(type)=>{const _b=BUILD[type];BUILD[type]=function(I,id){_b.apply(this,arguments);if(!LOCS[id+'_up'])return;const x=I.w/2-1.6,z=I.d/2-3.2;
+    /* never in the doorway: the stairs go where they leave the way in and every desk free */
+    const {st,spot}=placeStairs(I,true,{x,z,rot:Math.PI,spot:{x:x-1.6,z:z+0.6}});
+    addObj(I,st,{id:'stairsup',name:'Stairs up',ly:3.8,spot,acts:()=>[A('Go upstairs',LOCS[id+'_up'].kind2==='office'?'Offices':LOCS[id+'_up'].kind2==='study'?'Quiet reading room':'More classrooms',()=>goInt(id+'_up',getInt(id+'_up').stairsAt,Math.PI))]});
+    LOCS[id+'_up'].downSpawn=spot;};};
   ['library','admin','lecture'].forEach(t=>{if(BUILD[t])wrap(t);});}
 
 /* ================= DECORATE: your hostel corner and your family home too ================= */
