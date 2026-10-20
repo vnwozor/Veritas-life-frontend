@@ -22,6 +22,8 @@ function optBtn(wrap,t,s,fn,dis){const b=el('button','opt','<div class="l"><b>'+
 /* ================= ACTION DURATIONS (one table: TIME.ACTION_MIN) ================= */
 function actKind(label,o){const l=String(label||'').toLowerCase();o=o||{};
   if(o.sleep)return /nap/.test(l)?'nap':'sleep';if(o.cls||/^lecture/.test(l))return 'lecture';if(o.mass)return 'pray';if(/exam/.test(l))return 'exam';
+  /* paid kitchen and laundry work is work, whatever food or washing it mentions */
+  if(/plates|pots|peel|pound|mop|clean tables|serve at|fry eggs|wrap shawarma|small chops for|help in the kitchen|clothes \(|wash .*clothes|overtime|shift/.test(l))return 'work';
   if(/toilet|urinal|pee/.test(l))return 'toilet';if(/bath/.test(l))return 'bath';if(/shower|wash/.test(l))return 'shower';
   if(/assignment|stud|read|revis|homework|lt 2/.test(l))return 'study';if(/cook/.test(l))return 'cook';
   if(/eat|lunch|breakfast|dinner|rice|suya|shawarma|indomie|meal|food|snack|chop|garri|amala|eba|jollof|bread/.test(l))return 'eat';
@@ -34,10 +36,12 @@ function actKind(label,o){const l=String(label||'').toLowerCase();o=o||{};
     if(k==='sleep'||k==='nap'){const d0=o.done,nap=k==='nap';o.done=function(){N('energy',nap?30:100);N('sleep',nap?35:100);if(!nap)addMoodlet('Rested',6,360);if(d0)return d0.apply(this,arguments);};}
     return _sa.call(this,label,want,o);}catch(e){console.error(e);return _sa.call(this,label,mins,o);}};}
 /* the buttons show the new lengths */
-function parseDur(s){const m=String(s).match(/^(\d+(?:\.\d+)?)\s*(h|m|min)\b/);if(!m)return null;return m[2]==='h'?+m[1]*60:+m[1];}
+/* "1h 30m", "2h", "45m", "10 min" at the start of an action's description */
+const DUR_RE=/^(?:(\d+(?:\.\d+)?)\s*h(?:\s*(\d+)\s*(?:m|min))?|(\d+)\s*(?:m|min))\b/;
+function parseDur(s){const m=String(s).match(DUR_RE);if(!m)return null;return m[1]!=null?+m[1]*60+(+m[2]||0):+m[3];}
 function fmtD(mins){return mins<60?mins+' min':(mins%60?Math.floor(mins/60)+'h '+(mins%60)+'m':(mins/60)+'h');}
-{const _A=A;A=function(label,info,fn,o){try{if(typeof info==='string'){const d=parseDur(info);if(d!=null){const k=label==='Sleep'||/^sleep/i.test(label)?'sleep':label==='Nap'||/^nap/i.test(label)?'nap':actKind(label);
-      const want=k==='sleep'||k==='nap'?TIME.ACTION_MIN[k]:Math.min(d,TIME.ACTION_MIN[k]!=null?TIME.ACTION_MIN[k]:TIME.ACTION_MIN.other,TIME.maxActionMin);if(want!==d)info=info.replace(/^(\d+(?:\.\d+)?)\s*(h|m|min)\b/,fmtD(want));}}}catch(e){}return _A(label,info,fn,o);};}
+{const _A=A;A=function(label,info,fn,o){try{if(typeof info==='string'){const d=parseDur(info);if(d!=null){const k=label==='Sleep'||/^sleep/i.test(label)?'sleep':label==='Nap'||/^nap/i.test(label)?'nap':/sit and eat|eat something|proper meal|big meal/i.test(info)?'eat':actKind(label);
+      const want=k==='sleep'||k==='nap'?TIME.ACTION_MIN[k]:Math.min(d,TIME.ACTION_MIN[k]!=null?TIME.ACTION_MIN[k]:TIME.ACTION_MIN.other,TIME.maxActionMin);if(want!==d)info=info.replace(DUR_RE,fmtD(want));}}}catch(e){}return _A(label,info,fn,o);};}
 
 /* ================= NEEDS: a separate Sleep stat, warnings, effects ================= */
 const NEED_CFG={sleep:{start:80,decay:0.06,gainAsleep:1.6,low:25},warnBelow:22,warnEveryMin:240,lowSleepEnergyDrain:0.03,lowSleepStudy:0.65,lowHygieneSocial:0.6};
@@ -64,19 +68,33 @@ rideBar.querySelector('.x').onclick=()=>cancelRide();
   try{if(R2&&!R2.own&&R2.phase==='wait'&&!R2.boarded){const k=R2.k;R2.t0=R2.t0||performance.now();
       /* the driver never came: give up after two real minutes */
       if(k.mode==='pickup'&&performance.now()-R2.t0>120000){cancelRide('The driver is not coming. You were not charged.');return _up.apply(this,arguments);}
-      if(k.mode==='wait'&&!R2.board){k.mode='boarding';const g=k.g,r=g.rotation.y;const side={x:g.position.x+Math.cos(r)*1.8,z:g.position.z-Math.sin(r)*1.8};const fp=freeNear(NAV,side.x,side.z,3);R2.board={t:0,side:fp,stage:'walk'};P.path=navPath(P,fp)||[fp];P.i=0;P.mode='walk';}
+      if(k.mode==='wait'&&!R2.board){k.mode='boarding';const g=k.g;const D=paxDoor(g);const fp=freeNear(NAV,D.x,D.z,3);R2.board={t:0,side:fp,stage:'walk',door:D.id};P.path=navPath(P,fp)||[fp];P.i=0;P.mode='walk';}
       if(R2.board){const B=R2.board,g=k.g;B.t+=dt;
-        if(B.stage==='walk'){if(!P.path||Math.hypot(P.x-B.side.x,P.z-B.side.z)<0.6||B.t>7){P.path=null;P.mode='idle';B.stage='in';B.t=0;B.from={x:P.x,z:P.z};sfx('door');const V=g.userData.V;if(V&&V.doors&&V.doors.l0)vehDoor(V,'l0',true);}
+        if(B.stage==='walk'){if(!P.path||Math.hypot(P.x-B.side.x,P.z-B.side.z)<0.6||B.t>7){P.path=null;P.mode='idle';B.stage='in';B.t=0;B.from={x:P.x,z:P.z};const V=g.userData.V;if(V&&V.doors&&B.door&&V.doors[B.door])vehDoor(V,B.door,true);else sfx('door');}
           else{if(navMove(P,dt,walkSpeed(),NAV,true))P.path=null;P.walk+=dt*9;pose(player,'walk',P.walk,dt);player.position.set(P.x,0,P.z);player.rotation.y=P.dir;return;}}
         if(B.stage==='in'){const u=Math.min(1,B.t/0.9);const tx=g.position.x,tz=g.position.z;P.dir=Math.atan2(tx-B.from.x,tz-B.from.z);P.x=B.from.x+(tx-B.from.x)*u*0.85;P.z=B.from.z+(tz-B.from.z)*u*0.85;
           player.visible=true;player.position.set(P.x,0.3*Math.min(1,u*1.6),P.z);player.rotation.y=P.dir;pose(player,u<0.55?'walk':'sit',now/1000,dt);
-          if(u>=1){R2.boarded=true;k.mode='wait';player.position.y=0;const V=g.userData.V;if(V&&V.doors&&V.doors.l0)setTimeout(()=>vehDoor(V,'l0',false),300);}return;}}}
-    /* getting out: step out at the side, not through the roof */
-    if(R2&&!R2.own&&R2.phase==='ride'&&R2.k.mode==='drop'&&!R2.out){R2.out=true;const g=R2.k.g,r=g.rotation.y;const fp=freeNear(NAV,g.position.x+Math.cos(r)*1.8,g.position.z-Math.sin(r)*1.8,4);R2.k.x=fp.x;R2.k.z=fp.z;sfx('door');}
+          if(u>=1){R2.boarded=true;k.mode='wait';player.position.y=0;const V=g.userData.V;if(V&&V.doors&&B.door&&V.doors[B.door])setTimeout(()=>vehDoor(V,B.door,false),300);}return;}}}
+    /* getting out: the driver pulls over and stops, your door opens, you step out onto the kerb, the door shuts,
+       and only then does the car drive off */
+    if(R2&&!R2.own&&R2.phase==='ride'&&R2.k.mode==='drop'){const k=R2.k,g=k.g;
+      if(!R2.exit){const D=paxDoor(g);const fp=freeNear(NAV,D.x,D.z,4);R2.exit={t:0,t0:performance.now(),door:D.id,from:{x:g.position.x,z:g.position.z},to:fp};const V=g.userData.V;if(V&&V.doors&&V.doors[D.id])vehDoor(V,D.id,true);else sfx('door');}
+      const E=R2.exit;/* real seconds, so a slow phone does not keep you sitting in the car */E.t=Math.max(E.t+dt,(performance.now()-E.t0)/1000);const u=Math.min(1,Math.max(0,(E.t-0.35)/0.8));P.x=E.from.x+(E.to.x-E.from.x)*u;P.z=E.from.z+(E.to.z-E.from.z)*u;P.dir=Math.atan2(E.to.x-E.from.x,E.to.z-E.from.z);
+      player.visible=E.t>0.35;player.position.set(P.x,0,P.z);player.rotation.y=P.dir;pose(player,u<1?'walk':'stand',now/1000,dt);
+      if(E.t>1.3&&!E.shut){E.shut=true;const V=g.userData.V;if(V&&V.doors&&V.doors[E.door])vehDoor(V,E.door,false);}
+      if(E.t<2.0)return;
+      /* out and clear: the car leaves, you walk to the door of the place */
+      k.mode='ambient';kekeRoute(k);const d=LOCS[R2.dest];W.ride=null;player.visible=true;P.path=navPath(P,d.door)||[{x:d.door.x,z:d.door.z}];P.i=0;P.v=0;P.mode='walk';W.after=()=>{S.at=R2.dest;if(R2.then)R2.then();};return;}
   }catch(e){console.error(e);}
-  const out=_up.apply(this,arguments);
-  try{if(R2&&R2.out&&!W.ride&&R2.k){R2.k.x=R2.k.g.position.x;R2.k.z=R2.k.g.position.z;}}catch(e){}
-  return out;};}
+  return _up.apply(this,arguments);};}
+/* the passenger door on the kerb (right-hand) side: a rear door when there is one, the bus door on a danfo; for a keke, its open side */
+function paxDoor(g){const r=g.rotation.y,V=g.userData.V;let id=null,z=0;if(V&&V.doors){id=V.doors.r1?'r1':V.doors.r0?'r0':null;if(id){const d=V.doors[id];z=d.piv.position.z-0.5;}}
+  const off=(V&&V.W?V.W/2:0.9)+0.85;return {id,x:g.position.x+Math.cos(r)*off+Math.sin(r)*z,z:g.position.z-Math.sin(r)*off+Math.cos(r)*z};}
+/* your own car: walk round to the driver's door first, then that door opens and you get in */
+{const _ec=enterCar;enterCar=function(){const c=S&&S.car;if(!c||W.drive||W.ride||W.carAnim||W.toDriver)return _ec.apply(this,arguments);
+  const dx=c.x-Math.cos(c.dir)*1.9+Math.sin(c.dir)*0.4,dz=c.z+Math.sin(c.dir)*1.9+Math.cos(c.dir)*0.4;if(Math.hypot(P.x-dx,P.z-dz)<1.1)return _ec.apply(this,arguments);
+  const fp=freeNear(NAV,dx,dz,2.5);const path=navPath(P,fp);if(!path||pathLen(P,path)>40)return _ec.apply(this,arguments);
+  W.toDriver=true;P.path=path;P.i=0;P.mode='walk';W.after=()=>{W.toDriver=false;P.dir=Math.atan2(c.x-P.x,c.z-P.z);_ec();};setTimeout(()=>{W.toDriver=false;},9000);};}
 HOOKS.frame.push(()=>{const R2=W.ride;const show=!!(S&&R2&&!R2.own&&R2.phase==='wait'&&!R2.boarded);rideBar.hidden=!show;if(!show)return;
   const k=R2.k,d=Math.hypot(k.x-P.x,k.z-P.z),RD=k.rk||RIDES.keke;rideBar.querySelector('span').textContent='🛺 '+RD.n+(R2.board?' is here · climbing in':k.mode==='pickup'?' coming · '+Math.round(d)+' m away':' is here');
   rideBar.querySelector('.x').hidden=!!R2.board;});
@@ -244,18 +262,20 @@ BUILD.club=function(I,id){shell(I,16,12,5,floorTex('#1a1424','#120e1a','tile'),0
   I.populate=()=>{resetInt(I);const on=I.party();if(on)placeSim(I.dj,0,-4.9,0,'dance',0);};};
 {const _eb=enterBuilding;enterBuilding=function(id,then){const L=LOCS[id];
   if(id==='club'&&!S.inside&&!then&&!W.fading){if(!mature())return toast('Club Vibez','18+ only. The bouncer shakes his head.','bad');if(!isOpen('club'))return toast('Club Vibez','Opens at 9 PM.','bad');
-    if(S.flags.clubPaid!==dayOf(S.t)-(minOf(S.t)<4*60?1:0)){return dialog({who:'security',kicker:'Club Vibez · door',text:'"Cover is ₦3,000. No fighting, no trouble. Enjoy yourself."',choices:[{t:'Pay ₦3,000 and go in',fn:()=>{if(!spend(3000,'Club Vibez cover charge'))return 'You don\'t have ₦3,000.';S.flags.clubPaid=dayOf(S.t)-(minOf(S.t)<4*60?1:0);setTimeout(()=>enterBuilding('club'),300);return null;}},{t:'Not tonight',fn:()=>null}]});}}
+    if(S.flags.clubPaid!==dayOf(S.t)-(minOf(S.t)<4*60?1:0)){return dialog({who:'bouncer',kicker:'Club Vibez · door',text:'"Cover is ₦3,000. No fighting, no trouble. Enjoy yourself."',choices:[{t:'Pay ₦3,000 and go in',fn:()=>{if(!spend(3000,'Club Vibez cover charge'))return 'You don\'t have ₦3,000.';S.flags.clubPaid=dayOf(S.t)-(minOf(S.t)<4*60?1:0);setTimeout(()=>enterBuilding('club'),300);return null;}},{t:'Not tonight',fn:()=>null}]});}}
   if(L&&L.prop&&!S.inside&&!W.fading){const pr=propInfo(id);/* your home, or a viewing of one that is for sale or rent; other people's homes are private */
     if(pr&&!pr.mine&&(pr.tenant||(pr.owner&&!pr.listed)))return toast(L.name,'Private home. It belongs to '+(pr.tenantName||pr.ownerName||'another player')+'.','bad');}
   return _eb.apply(this,arguments);};}
 
 /* ================= HOUSES AND APARTMENTS: buy or rent (the server keeps one owner/tenant) ================= */
 const PROP_IDS=['prop1','prop2','prop3','prop4'];
+/* the "Sending the payment…" note closes by itself once the server answers */
+function closeSending(){try{const d=$('#dlg');if(UI.dlg&&d&&/Sending the payment|Sending\u2026/.test(d.innerText))closeDlg();}catch(e){}}
 function propsFetch(){if(!wsend({t:'prop_list'}))W3.props=null;}
 function propInfo(id){return W3.props&&W3.props.list.find(p=>p.id===id);}
 function propMine(id){const p=propInfo(id);return !!p&&(p.mine==='owner'||p.mine==='tenant');}
 onNet(m=>{if(m.t==='prop_list'){W3.props=m;if(UI.phone&&phoneView==='houses')renderPhone();}
-  else if(m.t==='prop_res'){const P0=W3.pend[m.ref];delete W3.pend[m.ref];
+  else if(m.t==='prop_res'){closeSending();const P0=W3.pend[m.ref];delete W3.pend[m.ref];
     if(m.ok){if(m.amount&&m.ref)applyCharge(m.ref,m.amount,m.kind==='buy'?'Bought '+LOCS[m.id].name:m.kind==='renew'?'Rent renewal · '+LOCS[m.id].name:'Rent + deposit · '+LOCS[m.id].name);
       toast(LOCS[m.id]?LOCS[m.id].name:'Property',m.kind==='buy'?'It is yours. The keys are in your pocket.':m.kind==='rent'?'Lease signed until shared Day '+m.until+'. Move in!':m.kind==='renew'?'Rent paid. Lease runs to shared Day '+m.until+'.':m.kind==='leave'?'You moved out.':m.kind==='listing'?(m.listed?'Listed for rent at '+naira(m.rent)+'.':'Taken off the rental market.'):'Done.','good');checkGoals();}
     else toast('Property',m.reason||'Try again.','bad');propsFetch();}});
@@ -285,9 +305,9 @@ BUILD.home3=function(I,id){const L=LOCS[id];const tier=({prop1:1,prop2:2,prop3:3
   const kit=new THREE.Group();kit.position.set(4.6,0,-4.2);I.g.add(kit);part(G.box,0xd9d2c0,3.6,1.0,0.8,0,0.5,0,kit);part(G.box,0x333333,0.8,0.06,0.6,-0.8,1.03,0,kit,false);part(G.box,0xf2f2f2,0.8,1.8,0.7,1.5,0.9,0.05,kit);
   addObj(I,kit,{id:'kitchen',name:'Kitchen',ly:2.6,spot:{x:4.2,z:-2.6},acts:()=>propMine(id)?[A('Cook jollof rice (₦1,500)','15 min · big meal',()=>{if(!spend(1500,'Groceries'))return toast('Not enough money','','bad');startAction('Cooking jollof rice',45,{where:id,per:()=>{N('food',1.6);N('fun',0.2);},done:()=>{N('food',25);addMoodlet('Home-cooked food',8,480);toast('Kitchen','Party jollof. At home.','good');}});}),
       A('Make noodles (₦600)','10 min · quick',()=>{if(!spend(600,'Noodles'))return;startAction('Eating noodles',15,{where:id,per:()=>N('food',2.2)});})]:[A('Kitchen','Viewing only',()=>{},{dis:'Buy or rent to use it'})]});
-  const bath=new THREE.Group();bath.position.set(5.2,0,2.6);I.g.add(bath);part(G.box,0xbfd7e0,0.08,2.6,3.2,-1.3,1.3,0,bath,false);part(G.box,0xf6f8f8,1.1,0.55,2.0,0.3,0.28,0,bath);part(G.box,0xf6f8f8,0.6,0.42,0.7,0.3,0.21,1.3,bath);
-  addObj(I,bath,{id:'bath',name:'Bathroom',ly:2.6,spot:{x:3.4,z:2.6},acts:()=>propMine(id)?[A('Take a bath','12 min · hygiene full',()=>wcAct('Bath at home',20,{hygiene:100,stress:-10,energy:3})),A('Shower','8 min',()=>wcAct('Shower at home',8,{hygiene:60})),A('Toilet','3 min',()=>wcAct('Toilet · at home',3,{bladder:100}))]:[A('Bathroom','Viewing only',()=>{},{dis:'Buy or rent to use it'})]});
-  const sofa=new THREE.Group();sofa.position.set(-1,0,2.6);I.g.add(sofa);part(G.box,tier>1?0x6b2f3a:0x4a5a6a,3.2,0.5,1.0,0,0.35,0,sofa);part(G.box,tier>1?0x6b2f3a:0x4a5a6a,3.2,0.8,0.3,0,0.75,0.45,sofa,false);part(G.box,0x111111,1.8,1.0,0.1,0,1.6,-3.8,sofa,false);
+  /* the bathroom sits along the right wall, clear of the front door */const bath=new THREE.Group();bath.position.set(5.2,0,-0.4);I.g.add(bath);part(G.box,0xbfd7e0,0.08,2.6,3.2,-1.3,1.3,0,bath,false);part(G.box,0xf6f8f8,1.1,0.55,2.0,0.3,0.28,0,bath);part(G.box,0xf6f8f8,0.6,0.42,0.7,0.3,0.21,1.3,bath);
+  addObj(I,bath,{id:'bath',name:'Bathroom',ly:2.6,spot:{x:3.4,z:-0.4},acts:()=>propMine(id)?[A('Take a bath','12 min · hygiene full',()=>wcAct('Bath at home',20,{hygiene:100,stress:-10,energy:3})),A('Shower','8 min',()=>wcAct('Shower at home',8,{hygiene:60})),A('Toilet','3 min',()=>wcAct('Toilet · at home',3,{bladder:100}))]:[A('Bathroom','Viewing only',()=>{},{dis:'Buy or rent to use it'})]});
+  const sofa=new THREE.Group();sofa.position.set(-1,0,2.6);I.g.add(sofa);part(G.box,tier>1?0x6b2f3a:0x4a5a6a,3.2,0.5,1.0,0,0.35,0,sofa);part(G.box,tier>1?0x6b2f3a:0x4a5a6a,3.2,0.8,0.3,0,0.75,0.45,sofa,false);/* the TV stands on its own low unit, so the space between it and the sofa stays walkable */const tvg=new THREE.Group();tvg.position.set(-1,0,-1.0);I.g.add(tvg);part(G.box,0x3a2a1e,1.9,0.5,0.45,0,0.25,0,tvg);part(G.box,0x111111,1.8,1.0,0.08,0,1.05,-0.05,tvg,false);
   addObj(I,sofa,{id:'sofa',name:'Sofa & TV',ly:2.4,spot:{x:-1,z:1.2},acts:()=>propMine(id)?[A('Watch TV','20 min · fun',()=>startAction('Watching TV at home',30,{where:id,place:{x:-1,y:0.2,z:2.4,r:Math.PI,pose:'sit'},per:()=>{N('fun',0.8);N('stress',-0.3);}})),
       A('Have friends over','15 min · social · invite players from the Players app',()=>startAction('Hanging out at home',30,{where:id,place:{x:-1.5,y:0.2,z:2.4,r:Math.PI,pose:'sittalk'},per:()=>{N('social',1.0);N('fun',0.6);}}))]:[A('Sofa','Viewing only',()=>{},{dis:'Buy or rent to use it'})]});
   const ward=new THREE.Group();ward.position.set(-6.2,0,1.0);I.g.add(ward);part(G.box,0x7b5636,0.7,2.4,1.8,0,1.2,0,ward);
