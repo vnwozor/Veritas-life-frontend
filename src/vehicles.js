@@ -72,7 +72,7 @@ function buildVehicle(kind,color,o){o=o||{};const P2=VPROF[kind],g=new THREE.Gro
   [[-W/2+0.55,0.1],[W/2-0.55,0.1],[0,-0.75]].forEach(([x,z])=>{if(kind!=='bus')part(G.box,0x2a2420,kind==='pickup'&&z<0?0.01:0.5,0.5,0.12,x,0.95,z-0.2,b,false);});
   g.scale.setScalar(o.scale||1.42);if(o.add!==false)outdoor.add(g);
   vMerge(b);wheels.forEach(w=>vMerge(w.spin));
-  const V={g,b,kind,doors,boot,wheels,sw:swr,dir:0,x:0,z:0,rd:0,steer:0};return V;}
+  const V={g,b,kind,doors,boot,wheels,sw:swr,W,dir:0,x:0,z:0,rd:0,steer:0};return V;}
 /* every static part of the body that shares a material becomes one mesh: a car is drawn with ~15 calls instead of ~80.
    Doors, boot lid, wheels and the hidden door/boot openings stay separate because they move or toggle. */
 const _mv=new THREE.Vector3(),_mn=new THREE.Vector3(),_m3=new THREE.Matrix3();
