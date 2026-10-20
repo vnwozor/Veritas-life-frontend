@@ -72,8 +72,11 @@ const M=(o)=>LQ?new THREE.MeshLambertMaterial({color:o.color||0xffffff}):new THR
 
 const grass=grassSet(),asph=asphaltSet(),pav=paverSet(),conc=plainSet([0x8f8a80,0xa6a092,0xb7b0a0],8,900),dirt=plainSet([0x8a6a48,0x9c7b55,0xab8b62,0x93805a,0x6f7a3e],4,1600);
 const gM=worldMapped(M({color:0xdedfd2}),grass,1/3.2,0.2);ground.material=gM;
-if(typeof townGround!=='undefined'&&townGround)townGround.material=worldMapped(M({color:0xffffff}),dirt,1/7,0.2);
-outer.material=worldMapped(new THREE.MeshLambertMaterial({color:0xe8e6dc}),dirt,1/9,0.25);
+/* green everywhere: the town, the city and the land beyond use the same lush grass as the campus (world-mapped, so it
+   never shows a seam); bare laterite is kept only for the road shoulders */
+if(typeof townGround!=='undefined'&&townGround)townGround.material=gM;
+if(typeof cityGround!=='undefined'&&cityGround)cityGround.material=gM;
+outer.material=gM;
 /* the asphalt keeps its wet-weather behaviour (the weather code tints roadMat.color from userData.c) */
 roadMat.userData.c=0xd9d6d2;roadMat.color.setHex(0xd9d6d2);worldMapped(roadMat,asph,1/4,0.12);if(!LQ)roadMat.normalScale.set(0.6,0.6);
 const dM=worldMapped(M({color:0xf0e6d8}),dirt,1/5,0.2);outdoor.children.forEach(o=>{if(o.isMesh&&o.material===dustMat)o.material=dM;});
@@ -85,9 +88,9 @@ const paveM=worldMapped(M({color:0xffffff,rough:0.9}),pav,1/2.2,0.1,true),kerbM=
 {const TL=new THREE.TextureLoader(),townM=typeof townGround!=='undefined'&&townGround?townGround.material:null;
   const ph=(name,cb)=>{const t={};let n=0;[['d',true],['n',false]].forEach(([k,srgb])=>TL.load('vendor/tex/'+name+'_'+k+'.jpg',tx=>{tx.wrapS=tx.wrapT=THREE.RepeatWrapping;tx.anisotropy=ANI;if(srgb)tx.encoding=THREE.sRGBEncoding;t[k]=tx;if(++n===2)try{cb(t);}catch(e){}},undefined,()=>{}));};
   const use=(m,t,color,scale,ns)=>{if(!m)return;m.map=t.d;if(!LQ){m.normalMap=t.n;m.normalScale=new THREE.Vector2(ns||1,ns||1);}if(color!=null)m.color.setHex(color);if(m.userData.ws)m.userData.ws.value=scale;m.needsUpdate=true;};
-  ph('leafy_grass',t=>use(gM,t,0xd4e6b8,1/2.6,1));
+  ph('leafy_grass',t=>use(gM,t,0xb4dc8c,1/2.6,1));
   ph('asphalt_02',t=>{roadMat.userData.c=0xc4c2bf;use(roadMat,t,0xc4c2bf,1/3.2,0.8);});
-  ph('dry_ground_01',t=>{use(dM,t,0xd9aa80,1/1.6,0.8);use(townM,t,0xdcbc98,1/2.4,0.8);use(outer.material,t,0xd8b890,1/5);});
+  ph('dry_ground_01',t=>{use(dM,t,0xa88a6a,1/1.6,0.8);});
   ph('concrete_pavers',t=>use(paveM,t,0xf2eee6,1/2.2,1));
   ph('concrete_floor_02',t=>use(kerbM,t,0xe6e2da,1/1.4,0.7));
   /* pitched roofs: painted corrugated iron sheets, ridges running down the slope, with a little sky reflection */
