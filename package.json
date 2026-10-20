@@ -12,7 +12,7 @@
     "build": "node build.js",
     "start": "node server.js",
     "cf:deploy": "wrangler deploy",
-    "test": "node --test tests/world.test.js",
+    "test": "node --test tests/world.test.js tests/city.test.js",
     "test:e2e": "node tests/e2e/journeys.js",
     "test:cf": "sh tests/cf/bundle.sh && node tests/cf/persist.mjs 1 && node tests/cf/persist.mjs 2",
     "test:load": "sh tests/cf/bundle.sh && node --expose-gc tests/cf/load.mjs 100 300 1000 3000"
