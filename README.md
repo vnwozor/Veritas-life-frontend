@@ -104,10 +104,18 @@ classic character's joints every frame, so every pose and cutscene works the sam
 
 - `npm test` — server rules on the in-memory engine: transfers (one send per reference, no overdraft, no race),
   items on the ground (one picker), hostel rooms (capacity), houses (one buyer, rent and owners), concert tickets
-  (capacity), onboarding record. Never touches real data.
+  (capacity), onboarding record; and the city: businesses (one owner, daily sales, staff, collect once), hosted
+  events, leaderboards, city houses. Never touches real data.
 - `npm run test:e2e` — two players in real browsers against the local server (needs Playwright): clock, sleep/nap,
   keke cancel/boarding/exit, drop and pick up, transfers, rooms, late assignments, houses, tickets, the club,
   logging back in on a new device.
+- `tests/e2e/play/*.js` — play-tests that tap through the game like a player on a phone-sized touch screen: a new
+  student's first steps (sign up, Skip the arrival, toilet, map), city jobs and transport, buying and driving a car (pedals,
+  reverse, speed camera, park), the club, outfits, food delivery, renting a home and furnishing it (place, rotate, move,
+  store, then log in on a new device), walking into every teaching building and house, taking a taxi, a danfo and a keke
+  (the kerb-side door opens, the vehicle waits until you are out), getting into your own car by the driver's door,
+  and a drive through every city road. Run one with
+  `NODE_PATH=<folder with playwright> node tests/e2e/play/new-student.js`.
 - `npm run test:cf` — the Cloudflare server code (Durable Object) on a local SQLite file, restarted between two runs:
   transfers, history, items, rooms, onboarding survive the restart.
 - `npm run test:load` — staged simulation of 100 → 3,000 players on one Durable Object, measuring server CPU and memory
