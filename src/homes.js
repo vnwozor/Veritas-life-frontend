@@ -73,7 +73,7 @@ const garageG=new THREE.Group();outdoor.add(garageG);
 function garageRefresh(){while(garageG.children.length)garageG.remove(garageG.children[0]);const L=LOCS.garage;(S&&S.garage||[]).slice(0,3).forEach((c,i)=>{const g=makeCar(c.col,c.model==='jeep'?'suv':'sedan');
   outdoor.remove(g);g.position.set(L.x-L.w/2+2+i*4,0,L.z+0.4);g.rotation.y=Math.PI;garageG.add(g);});}
 function stashCar(){const c=S.car;if(!c)return;S.garage=S.garage||[];carDyn(false);const keep=Object.assign({},c);delete keep.x;delete keep.z;delete keep.dir;S.garage.push(keep);S.car=null;buildMyCar();garageRefresh();}
-function takeCar(i){const g=S.garage||[];const c=g[i];if(!c)return;const L=LOCS.garage;g.splice(i,1);S.car=Object.assign({},c,{x:L.door.x,z:L.door.z-1,dir:Math.PI});buildMyCar();carDyn(true);garageRefresh();checkGoals();}
+function takeCar(i){const g=S.garage||[];const c=g[i];if(!c)return;const L=LOCS.garage;g.splice(i,1);{const sp=carSpawn(L.door.x,L.door.z-1,Math.PI);S.car=Object.assign({},c,{x:sp.x,z:sp.z,dir:sp.dir});}buildMyCar();carDyn(true);garageRefresh();checkGoals();}
 function garageActs(){const L=[];if(!ownsHouse())return [A('Locked','The garage comes with Bwari Hills Duplex',()=>{},{dis:'Buy the duplex first'})];
   const G2=S.garage||[];const near=S.car&&Math.hypot(S.car.x-LOCS.garage.x,S.car.z-LOCS.garage.z)<22;
   if(S.car)L.push(A('Park '+S.car.n+' inside','Keep it safe in your garage',()=>{stashCar();toast('Garage','Parked inside. The door rolls down.','good');},{dis:near?(G2.length>=3?'The garage holds 3 cars':null):'Drive it here first'}));
