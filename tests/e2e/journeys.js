@@ -52,6 +52,8 @@ const until = async (ev, f, ms, arg) => { const t0 = Date.now(); while (Date.now
       return { boarded: !!R2.boarded, phase: X.W.ride && X.W.ride.phase, paidOnce: m0 - X.S.money, visible: window.__VLRAW.player.visible }; });
     ok('keke boarding: walk up, climb in, then ride', kb.boarded && kb.phase === 'ride' && kb.visible === false, kb);
     await A.ev(() => { const X = window.__VLX; if (X.W.ride) X.W.ride.k.mode = 'drop'; }); for (let i = 0; i < 6; i++) { await A.closeD(); await sleep(400); }
+    /* the keke stops, you step out, then it leaves: wait for that like a player would */
+    await until(A.ev, () => { const X = window.__VLX; if (X.UI.dlg) { X.UI.dlgQ = []; X.closeDlg(); } return !X.W.ride; }, 20000);
     const ke = await A.ev(() => { const X = window.__VLX; return { ride: !!X.W.ride, visible: window.__VLRAW.player.visible }; }); ok('keke exit: out of the ride and visible', !ke.ride && ke.visible, ke);
     await A.closeD(); await B.closeD();
     /* ---- both in the same place for items ---- */
@@ -88,7 +90,7 @@ const until = async (ev, f, ms, arg) => { const t0 = Date.now(); while (Date.now
     await A.ev(() => window.VLNet.send({ t: 'prop_list' })); await until(A.ev, () => window.__W3.W3.props, 8000);
     await A.ev(() => { const S = window.__VLX.S; const ref = 'p-qa-' + Date.now(); window.__W3.W3.pend[ref] = 1; window.VLNet.send({ t: 'state', st: window.__VLRAW.snapState() }); window.VLNet.send({ t: 'prop_buy', id: 'prop4', ref, bal: S.money }); });
     const bought = await until(A.ev, () => { const p = window.__W3.W3.props && window.__W3.W3.props.list.find(x => x.id === 'prop4'); return p && p.mine === 'owner'; }, 12000);
-    const m1 = await A.ev(() => window.__VLX.S.money); ok('buy the mini flat', !!bought); ok('price taken once (other small game costs aside)', Math.abs((3000000 - m1) - 1500000) < 20000, 3000000 - m1);
+    const m1 = await A.ev(() => window.__VLX.S.money); ok('buy the mini flat', !!bought); const buyTx = await A.ev(() => window.__VLX.S.tx.filter(t => /Bought Mini Flat/.test(t.l)).map(t => t.a)); ok('price taken once', buyTx.length === 1 && buyTx[0] === -1500000, { buyTx, spentOverall: 3000000 - m1 });
     const n1 = await A.ev(() => window.__VLX.S.tx.filter(t => /Bought Mini Flat/.test(t.l)).length); ok('one ledger line for the purchase', n1 === 1, n1);
     await B.ev(() => window.VLNet.send({ t: 'prop_list' })); await until(B.ev, () => window.__W3.W3.props, 8000);
     const bTry = await B.ev(() => { window.__VLRAW.enterBuilding('prop4'); return window.__VLX.S.inside; }); ok('another player can not walk into your home', !bTry);
