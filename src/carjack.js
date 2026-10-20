@@ -3,7 +3,7 @@
    with the normal driving controls. It is a crime: an alarm can go off, security can catch you, and while
    you drive a stolen car the police can trace it. Sell it at Junction Autos' back yard, or ditch it. */
 /* the Car Park's free bay only: the other bays already have cars in them */
-const PARK_SPOTS=[[11.12,-19,Math.PI],[17,101.8,0],[33,101.8,0],[-50,124,Math.PI/2],[42,128,-Math.PI/2]];
+const PARK_SPOTS=[[11.12,-19,Math.PI],[17,101.8,0],[33,101.8,0],[-50,124,Math.PI/2],[86,128,-Math.PI/2]];
 const PCOL=[[0xe8e2d0,'white'],[0x1f2d44,'navy'],[0x9a9a9a,'silver'],[0x7a2331,'wine'],[0x2b2b2b,'black'],[0x2f6b3e,'green'],[0xc9971c,'gold']];
 const PK=[];
 function parkSpawn(i){const [x,z,dir]=PARK_SPOTS[i];if(S&&S.car&&Math.hypot(S.car.x-x,S.car.z-z)<3)return;const [col,cn]=PCOL[(i*3+dayOf(S?S.t:0))%PCOL.length];const kind=i%3===2?'suv':'sedan';
