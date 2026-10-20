@@ -71,14 +71,14 @@ HOOKS.populate.push(I=>{if(S&&S.decor&&S.decor[I.id])decorBuild(I);});
 /* ---------- UI: Decorate button, catalogue, placement bar ---------- */
 const bmBtn=el('button',null,'🛋 Decorate');bmBtn.id='bmBtn';bmBtn.hidden=true;$('#app').append(bmBtn);
 const bmBar=el('div',null,'<span class="t"></span><button data-a="rot">⟳ Rotate</button><button data-a="ok">✓ Place</button><button data-a="no">✕</button>');bmBar.id='bmBar';bmBar.hidden=true;$('#app').append(bmBar);
-{const st=document.createElement('style');st.textContent='body.bm-on #obj,body.bm-on #toasts{display:none!important}#bmBtn{position:absolute;left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);background:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-weight:600;font-size:12px;z-index:6}'+
+{const st=document.createElement('style');st.textContent='body.bm-on #obj,body.bm-on #toasts{display:none!important}body.bm-on .lbl.obj{pointer-events:none!important;opacity:.35}body.bm-on #prompt{display:none!important}#bmBtn{position:absolute;left:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);background:var(--ink);border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-weight:600;font-size:12px;z-index:6}'+
   '#bmBar{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 74px);display:flex;gap:6px;align-items:center;background:var(--ink);border:1px solid var(--line);border-radius:12px;padding:8px;z-index:7;max-width:calc(100vw - 32px)}'+
   '#bmBar .t{font-size:12px;color:var(--muted);padding:0 6px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#bmBar button{min-height:44px;padding:0 12px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.06);font-weight:700;font-size:13px}#bmBar button[data-a=ok]{background:var(--gold);color:#1d1606;border-color:var(--gold)}#bmBar button:disabled{opacity:.45}';document.head.appendChild(st);}
 setInterval(()=>{bmBtn.hidden=!(myHomeHere()&&!BM.on&&!CS.on&&!W.fading);if(BM.on&&!myHomeHere())bmEnd();},400);
 bmBtn.onclick=()=>{if(!myHomeHere()||busy())return;const wrap=el('div');wrap.style.display='grid';wrap.style.gap='8px';const I=getInt(S.inside);const placed=decorList(S.inside);
   wrap.append(el('div','note','Tap an item to buy it, then tap the floor where it should go. Placed pieces: tap them to use, move or sell.'));
   ['Living','Kitchen','Bedroom','Study','Decor'].forEach(c=>{wrap.append(el('div','kicker2','<b style="font-size:11px;letter-spacing:.14em;color:var(--gold)">'+c.toUpperCase()+'</b>'));
-    DECOR.filter(d=>d.c===c).forEach(d=>{const b=el('button','opt','<div class="l"><b>'+d.n+'</b><span>'+(d.fx?{sit:'Sit and relax',tv:'Watch TV',game:'Play games',music:'Music and dancing',read:'Read',study:'Study',eat:'Cook and eat',snack:'Snacks and cold drinks',sleep:'Sleep'}[d.fx]:'Decoration · makes home nicer')+'</span></div><div class="r"><span class="c">'+naira(d.p)+'</span></div>');
+    DECOR.filter(d=>d.c===c).forEach(d=>{const b=el('button','opt','<div class="l"><b>'+d.n+'</b><span>'+(d.fx?{sit:'Sit and relax',tv:'Watch TV',game:'Play games',music:'Music and dancing',read:'Read',study:'Study',eat:'Cook and eat',snack:'Snacks and cold drinks',sleep:'Sleep',gym:'Work out at home'}[d.fx]||'Furniture':'Decoration · makes home nicer')+'</span></div><div class="r"><span class="c">'+naira(d.p)+'</span></div>');
       if(S.money<d.p){b.disabled=true;}b.onclick=()=>{closeSheet();bmStart({k:d.k});};wrap.append(b);});});
   if(placed.length)wrap.append(el('div','note','You have '+placed.length+' piece'+(placed.length>1?'s':'')+' in this home.'));
   openSheet('Decorate',(LOCS[S.inside].iname||LOCS[S.inside].name),wrap);};
@@ -91,11 +91,20 @@ function bmStart(o){const I=getInt(S.inside);if(ACT)stopAction(true);if(UI.sheet
   cam.idist=Math.max(cam.idist||0,22);document.body.classList.add('bm-on');bmBar.hidden=false;bmBar.querySelector('.t').textContent=(o.move?'Move: ':'')+D.n+' · tap the floor';bmCheck();}
 function bmEnd(silent){if(!BM.on)return;if(BM.g&&BM.g.parent)BM.g.parent.remove(BM.g);if(BM.move&&BM.I)BM.I.decorObjs.forEach(x=>x.g.visible=true);BM.on=false;BM.g=null;bmBar.hidden=true;document.body.classList.remove('bm-on');}
 function bmFoot(x,z,D,r){const q=Math.abs(Math.round(r/(Math.PI/2)))%2===1;return{hw:(q?D.d:D.w)/2,hd:(q?D.w:D.d)/2,x,z};}
+/* a piece may not cut the room in two: everything you could walk to from the door before must still be reachable */
+function bmReach(g,s){const seen=new Uint8Array(g.N);if(s<0||g.blk[s])return seen;const q=[s];seen[s]=1;
+  while(q.length){const k=q.pop(),i=k%g.w,j=(k-i)/g.w;for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1]]){const ni=i+di,nj=j+dj;if(ni<0||nj<0||ni>=g.w||nj>=g.h)continue;const n=nj*g.w+ni;if(!seen[n]&&!g.blk[n]){seen[n]=1;q.push(n);}}}return seen;}
+function bmKeepsPath(I,p,D,r){try{const hid=[];BM.g.visible=false;if(BM.move)(I.decorObjs||[]).forEach(o=>{if(!o.g.visible)hid.push(o.g);});
+    const save0=I.nav;I.nav=null;const gA=intNav(I);I.nav=save0;BM.g.visible=true;
+    const gB={x0:gA.x0,z0:gA.z0,w:gA.w,h:gA.h,cs:gA.cs,N:gA.N,blk:gA.blk.slice()};raster(gB,{c:0,x:p.x,z:p.z,w:D.w,d:D.d,a:r},0.28,gB.blk);
+    const s=gIdx(gA,I.spawn.x,I.spawn.z);const A0=bmReach(gA,s),B0=bmReach(gB,s);if(s<0)return true;if(gB.blk[s])return false;
+    for(let k=0;k<gA.N;k++)if(A0[k]&&!gB.blk[k]&&!B0[k])return false;return true;}catch(e){console.error(e);return true;}}
 function bmCheck(){const I=BM.I,D=BM.D,p=BM.g.position,f=bmFoot(p.x,p.z,D,BM.r);let ok=Math.abs(p.x)+f.hw<I.w/2-0.35&&Math.abs(p.z)+f.hd<I.d/2-0.35;
   if(ok&&I.spawn&&Math.abs(p.x-I.spawn.x)<f.hw+1.2&&Math.abs(p.z-I.spawn.z)<f.hd+1.4)ok=false; // keep the doorway clear
   if(ok&&!D.flat){for(const it of decorList(I.id)){if(it===BM.move)continue;const E=DECOR_BY[it.k];if(!E||E.flat)continue;const g2=bmFoot(it.x,it.z,E,it.r||0);if(Math.abs(it.x-p.x)<f.hw+g2.hw&&Math.abs(it.z-p.z)<f.hd+g2.hd){ok=false;break;}}
     if(ok){/* the room's own furniture (bed, desk, kitchen...) from its walk grid, built without the pieces placed here */const hid=[];(I.decorObjs||[]).forEach(o=>{if(o.g.visible){o.g.visible=false;hid.push(o.g);}});BM.g.visible=false;const save0=I.nav;I.nav=null;const g=intNav(I);I.nav=save0;hid.forEach(h=>h.visible=true);BM.g.visible=true;
       for(let a=-1;a<=1&&ok;a+=0.5)for(let b=-1;b<=1;b+=0.5){const k=gIdx(g,p.x+a*f.hw*0.9,p.z+b*f.hd*0.9);if(k>=0&&g.blk[k]&&!(Math.abs(p.x+a*f.hw*0.9)>I.w/2-0.7||Math.abs(p.z+b*f.hd*0.9)>I.d/2-0.7)){ok=false;break;}}}}
+  if(ok&&!D.flat&&I.spawn)ok=bmKeepsPath(I,p,D,BM.r);
   BM.ok=ok;BM.ring.material.color.setHex(ok?0x2fbf6a:0xd23b2b);bmBar.querySelector('[data-a=ok]').disabled=!ok;return ok;}
 {const _tap=onTap;onTap=function(cx,cy){if(!BM.on)return _tap(cx,cy);const r=cv.getBoundingClientRect();mv.x=(cx-r.left)/r.width*2-1;mv.y=-(cy-r.top)/r.height*2+1;ray.setFromCamera(mv,camera);
   const h=ray.intersectObject(BM.I.floor,false)[0];if(!h)return;const p=BM.I.g.worldToLocal(h.point.clone());BM.g.position.set(Math.round(p.x*2)/2,0,Math.round(p.z*2)/2);bmCheck();};}
