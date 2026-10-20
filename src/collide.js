@@ -43,8 +43,21 @@ trafficRules=function(dt){const L=[];for(const k of VEH){if(k.mode==='parked'||!
 /* ---------- the car you drive hits every vehicle, parked or moving ---------- */
 function carHitsVeh(x,z,dir,from){if(!myCarG)return false;const me=vehBox(myCarG,x,z,dir,-0.05);const c=from||S.car;const cur=c?vehBox(myCarG,c.x,c.z,c.dir,-0.05):null;
   for(const g of solids()){if(g===myCarG)continue;const ob=vehBox(g);if(Math.hypot(ob.cx-me.cx,ob.cz-me.cz)>me.hl+ob.hl+1)continue;
-    if(boxHit(me,ob)){/* already touching it (it drove into you): let you back away */if(cur&&boxHit(cur,ob)&&Math.hypot(ob.cx-me.cx,ob.cz-me.cz)>=Math.hypot(ob.cx-cur.cx,ob.cz-cur.cz))continue;return true;}}return false;}
+    if(boxHit(me,ob)){/* already touching it (it drove into you): let you back away */if(cur&&boxHit(cur,ob)&&Math.hypot(ob.cx-me.cx,ob.cz-me.cz)>=Math.hypot(ob.cx-cur.cx,ob.cz-cur.cz))continue;W.hitVeh=g;W.hitVehAt=performance.now();return true;}}return false;}
+/* traffic never blocks you for good: a moving (ambient) car that keeps your car from going anywhere for a few seconds
+   turns off down another road (it goes somewhere out of sight) */
+HOOKS.frame.push(dt=>{try{if(!W.drive||!S.car){W.blockT=0;return;}const now=performance.now();const g=W.hitVeh;
+  if(!g||now-(W.hitVehAt||0)>400||Math.abs(W.drive.v)>1.5){W.blockT=Math.max(0,(W.blockT||0)-dt*2);return;}
+  const k=VEH.find(v=>v.g===g);if(!k||k.mode!=='ambient'){W.blockT=0;return;}W.blockT=(W.blockT||0)+dt;
+  if(W.blockT>2.5){W.blockT=0;W.hitVeh=null;const far=NODES.filter((n,i)=>(k.cityOnly?n.city:k.isCar&&!k.campusOnly?true:i<20)&&Math.hypot(n.x-S.car.x,n.z-S.car.z)>90&&Math.hypot(n.x-cam.tx,n.z-cam.tz)>70);
+    const n=far.length?pick(far):null;if(n){k.x=n.x;k.z=n.z;k.path=null;k.i=0;k.rd=null;k.vf=1;k.pHold=0;k.g.position.set(n.x,0,n.z);}}}catch(e){}});
 
+/* ---------- walking into a stopped car: go round it (it waits for you, you wait for it: neither would ever move) ---------- */
+function walkBlocked(list){if(P.mode!=='walk'||!P.path)return;W.pushT=(W.pushT||0)+0.05;if(W.pushT<0.9)return;W.pushT=0;
+  let near=null,nd=1e9;for(const g of list){const b=vehBox(g);const d=Math.hypot(P.x-b.cx,P.z-b.cz);if(d<nd){nd=d;near=b;}}if(!near||nd>6)return;
+  const o={c:0,x:near.cx,z:near.cz,w:near.hw*2+0.6,d:near.hl*2+0.6,a:Math.atan2(near.ux,near.uz)};raster(NAV,o,0.3,NAV.dyn,1);
+  const fin=P.path[P.path.length-1];const np=navPath(P,fin);if(np){P.path=np;P.i=0;}
+  setTimeout(()=>{try{raster(NAV,o,0.3,NAV.dyn,0);/* put back anything parked that shares those cells */if(W.drive&&S.car)carDyn(true);if(W.ownDyn)raster(NAV,W.ownDyn,0.3,NAV.dyn,1);if(typeof PK!=='undefined')PK.forEach(p=>{if(p)raster(NAV,{c:0,x:p.x,z:p.z,w:3.0,d:6.0,a:p.dir},0.3,NAV.dyn,1);});}catch(e){}},5000);}
 /* ---------- people can't stand inside a vehicle ---------- */
 function pushOut(o,list){let moved=false;const R=0.38;
   for(const g of list){const b=vehBox(g);const dx=o.x-b.cx,dz=o.z-b.cz;if(Math.abs(dx)>b.hl+2||Math.abs(dz)>b.hl+2)continue;
@@ -54,7 +67,7 @@ function pushOut(o,list){let moved=false;const R=0.38;
     for(const [mx,mz] of opts){const nx=o.x+mx,nz=o.z+mz;const k=gIdx(NAV,nx,nz);if(k>=0&&!NAV.blk[k]){o.x=nx;o.z=nz;moved=true;break;}}}
   return moved;}
 HOOKS.frame.push(()=>{try{if(!S||S.inside||CS.on||W.fading)return;const list=solids();if(!list.length)return;
-    if(!W.drive&&!W.ride&&!W.carAnim&&!(ACT&&(ACT.place||ACT.hide))&&player&&player.visible){if(pushOut(P,list)){player.position.set(P.x,0,P.z);}}
+    if(!W.drive&&!W.ride&&!W.carAnim&&!(ACT&&(ACT.place||ACT.hide))&&player&&player.visible){if(pushOut(P,list)){player.position.set(P.x,0,P.z);walkBlocked(list);}else W.pushT=Math.max(0,(W.pushT||0)-0.05);}
     for(const n of npcs){if(n.hidden||!n.g.visible)continue;if(pushOut(n,list))n.g.position.set(n.x,0,n.z);}}catch(e){}});
 
 /* your own car stays solid (and visible) while you drive a stolen one */
